@@ -47,7 +47,6 @@ namespace AppSwitcher {
 
 			// setup rift video stream
 			rw = new RiftWindow(device);
-			window_app = 0;
 
 			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
 			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
@@ -70,7 +69,7 @@ namespace AppSwitcher {
 		}
 	private: OVR::DeviceManager *device_manager;
 	private: RiftWindow *rw;
-	private: HWND window_app;
+	//private: HWND window_app;
 	private: System::Timers::Timer^ t;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
@@ -236,6 +235,7 @@ namespace AppSwitcher {
 
 			if(msg.Msg == WM_HOTKEY){
 				if(currentProcess){
+					rw->window_app = 0;
 					currentProcess->Kill();
 					currentProcess = nullptr;
 				}
@@ -263,7 +263,7 @@ namespace AppSwitcher {
 			Thread::Sleep(1500); // wait 1500ms for Direct3D window to show up (it has different HWND!)
 
 			currentProcess = proc;
-			window_app = GetTopLevelWindowForProcessId(proc->Id);
+			rw->window_app = GetTopLevelWindowForProcessId(proc->Id);
 		}
 
 		HWND GetTopLevelWindowForProcessId(int pid){
@@ -361,34 +361,7 @@ namespace AppSwitcher {
 		}
 		
 		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
-			HDC dc_targ = GetDC(rw->m_hwnd);
-
-			if(window_app){
-				POINT pt;
-				pt.x = 0;
-				pt.y = 0;
-				ClientToScreen(window_app, &pt);
-
-				HDC dc_all = GetDC(0);
-				BitBlt(dc_targ, 0, 0, 1280, 800, dc_all, pt.x, pt.y, SRCCOPY);
-			}
-			
-			int sz = 100;
-			int d = 70;
-
-			PAINTSTRUCT ps;
-			BeginPaint(rw->m_hwnd, &ps);
-			RoundRect(dc_targ, 320+d-sz, 250, 320+d+sz, 400, 3, 3);
-			RoundRect(dc_targ, 640+320-d-sz, 250, 640+320-d+sz, 400, 3, 3);
-			
-			
-			TextOutW(dc_targ, 320+d, 300, L"Yunalus", 7);
-			TextOutW(dc_targ, 640+320-d, 300, L"Yunalus", 7);
-
-			TextOutW(dc_targ, 320+d, 300+30, L"Mikulus", 7);
-			TextOutW(dc_targ, 640+320-d, 300+30, L"Mikulus", 7);
-			EndPaint(rw->m_hwnd, &ps);
-
+			InvalidateRect(rw->m_hwnd, NULL, FALSE);
 			UpdateWindow(rw->m_hwnd);
 		}
 	private:
