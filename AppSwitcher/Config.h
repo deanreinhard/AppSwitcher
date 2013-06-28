@@ -19,7 +19,7 @@ namespace AppSwitcher {
 	bool CALLBACK list_proc(HWND hwnd, LPARAM param);
 
 	/// <summary>
-	/// Config ‚ÌŠT—v
+	/// Config is the configuration window for AppSwitcher. Config also handles actual application execution.
 	/// </summary>
 	public ref class Config : public System::Windows::Forms::Form
 	{
@@ -45,7 +45,16 @@ namespace AppSwitcher {
 			
 
 
+			// setup rift video stream
 			rw = new RiftWindow(device);
+			window_app = 0;
+
+			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
+			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
+			t->Enabled = true;
+
+			// register hotkey
+			RegisterHotKey(static_cast<HWND>(Handle.ToPointer()), 0, MOD_CONTROL | MOD_SHIFT, 'Z');
 		}
 
 	protected:
@@ -65,6 +74,8 @@ namespace AppSwitcher {
 	private: System::Timers::Timer^ t;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
+	private: int currentAppIx;
+	private: Process^ currentProcess;
 
 
 
@@ -74,6 +85,9 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::TextBox^  textBox1;
 	private: System::Windows::Forms::Label^  label2;
 	private: System::Windows::Forms::Label^  label3;
+	private: System::Windows::Forms::Button^  button1;
+	private: System::Windows::Forms::ListBox^  listBox1;
+	private: System::Windows::Forms::Button^  button3;
 	protected: 
 
 	private:
@@ -94,12 +108,15 @@ namespace AppSwitcher {
 			this->textBox1 = (gcnew System::Windows::Forms::TextBox());
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->label3 = (gcnew System::Windows::Forms::Label());
+			this->button1 = (gcnew System::Windows::Forms::Button());
+			this->listBox1 = (gcnew System::Windows::Forms::ListBox());
+			this->button3 = (gcnew System::Windows::Forms::Button());
 			this->SuspendLayout();
 			// 
 			// labelRiftInfo
 			// 
 			this->labelRiftInfo->AutoSize = true;
-			this->labelRiftInfo->Location = System::Drawing::Point(12, 75);
+			this->labelRiftInfo->Location = System::Drawing::Point(12, 277);
 			this->labelRiftInfo->Name = L"labelRiftInfo";
 			this->labelRiftInfo->Size = System::Drawing::Size(35, 12);
 			this->labelRiftInfo->TabIndex = 2;
@@ -107,11 +124,11 @@ namespace AppSwitcher {
 			// 
 			// button2
 			// 
-			this->button2->Location = System::Drawing::Point(14, 105);
+			this->button2->Location = System::Drawing::Point(14, 319);
 			this->button2->Name = L"button2";
 			this->button2->Size = System::Drawing::Size(75, 23);
 			this->button2->TabIndex = 3;
-			this->button2->Text = L"launch";
+			this->button2->Text = L"Launch";
 			this->button2->UseVisualStyleBackColor = true;
 			this->button2->Click += gcnew System::EventHandler(this, &Config::button2_Click);
 			// 
@@ -135,24 +152,58 @@ namespace AppSwitcher {
 			// label3
 			// 
 			this->label3->AutoSize = true;
-			this->label3->Location = System::Drawing::Point(12, 63);
+			this->label3->Location = System::Drawing::Point(12, 265);
 			this->label3->Name = L"label3";
 			this->label3->Size = System::Drawing::Size(89, 12);
 			this->label3->TabIndex = 8;
 			this->label3->Text = L"Rift Display Info";
 			// 
+			// button1
+			// 
+			this->button1->Location = System::Drawing::Point(459, 31);
+			this->button1->Name = L"button1";
+			this->button1->Size = System::Drawing::Size(75, 23);
+			this->button1->TabIndex = 9;
+			this->button1->Text = L"Browse";
+			this->button1->UseVisualStyleBackColor = true;
+			this->button1->Click += gcnew System::EventHandler(this, &Config::button1_Click);
+			// 
+			// listBox1
+			// 
+			this->listBox1->FormattingEnabled = true;
+			this->listBox1->ItemHeight = 12;
+			this->listBox1->Items->AddRange(gcnew cli::array< System::Object^  >(2) {L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Yunalus\\Yunalus.exe", 
+				L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Mikulus\\Mikulus.exe"});
+			this->listBox1->Location = System::Drawing::Point(14, 83);
+			this->listBox1->Name = L"listBox1";
+			this->listBox1->Size = System::Drawing::Size(520, 172);
+			this->listBox1->TabIndex = 10;
+			// 
+			// button3
+			// 
+			this->button3->Location = System::Drawing::Point(14, 54);
+			this->button3->Name = L"button3";
+			this->button3->Size = System::Drawing::Size(75, 23);
+			this->button3->TabIndex = 11;
+			this->button3->Text = L"Add";
+			this->button3->UseVisualStyleBackColor = true;
+			this->button3->Click += gcnew System::EventHandler(this, &Config::button3_Click);
+			// 
 			// Config
 			// 
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 12);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
-			this->ClientSize = System::Drawing::Size(508, 139);
+			this->ClientSize = System::Drawing::Size(721, 364);
+			this->Controls->Add(this->button3);
+			this->Controls->Add(this->listBox1);
+			this->Controls->Add(this->button1);
 			this->Controls->Add(this->label3);
 			this->Controls->Add(this->label2);
 			this->Controls->Add(this->textBox1);
 			this->Controls->Add(this->button2);
 			this->Controls->Add(this->labelRiftInfo);
 			this->Name = L"Config";
-			this->Text = L"AppSwitcher (—\’è)";
+			this->Text = L"AppSwitcher";
 			this->ResumeLayout(false);
 			this->PerformLayout();
 
@@ -162,6 +213,36 @@ namespace AppSwitcher {
 	private:
 		System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
 			LaunchUnityRiftApplication(textBox1->Text);
+		}
+
+		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
+			auto dialog = gcnew OpenFileDialog();
+			dialog->Filter = "Executable Files (*.exe)|*.exe";
+			if(dialog->ShowDialog() == Windows::Forms::DialogResult::OK){
+				textBox1->Text = dialog->FileName;
+			}
+
+		}
+
+		System::Void button3_Click(System::Object^  sender, System::EventArgs^  e) {
+			listBox1->Items->Add(textBox1->Text);
+			textBox1->Text = "";
+		}
+
+		
+		protected:
+		virtual System::Void WndProc(Message% msg) override {
+			Form::WndProc(msg);
+
+			if(msg.Msg == WM_HOTKEY){
+				if(currentProcess){
+					currentProcess->Kill();
+					currentProcess = nullptr;
+				}
+
+				LaunchUnityRiftApplication(listBox1->Items[currentAppIx]->ToString());
+				currentAppIx = (currentAppIx+1)%listBox1->Items->Count;
+			}
 		}
 
 		void LaunchUnityRiftApplication(String^ filepath){
@@ -181,12 +262,8 @@ namespace AppSwitcher {
 
 			Thread::Sleep(1500); // wait 1500ms for Direct3D window to show up (it has different HWND!)
 
+			currentProcess = proc;
 			window_app = GetTopLevelWindowForProcessId(proc->Id);
-
-			// start timer
-			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
-			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
-			t->Enabled = true;
 		}
 
 		HWND GetTopLevelWindowForProcessId(int pid){
@@ -284,18 +361,38 @@ namespace AppSwitcher {
 		}
 		
 		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
-			POINT pt;
-			pt.x = 0;
-			pt.y = 0;
-			ClientToScreen(window_app, &pt);
-
-			HDC dc_all = GetDC(0);
 			HDC dc_targ = GetDC(rw->m_hwnd);
-			BitBlt(dc_targ, 0, 0, 1280, 800, dc_all, pt.x, pt.y, SRCCOPY);
+
+			if(window_app){
+				POINT pt;
+				pt.x = 0;
+				pt.y = 0;
+				ClientToScreen(window_app, &pt);
+
+				HDC dc_all = GetDC(0);
+				BitBlt(dc_targ, 0, 0, 1280, 800, dc_all, pt.x, pt.y, SRCCOPY);
+			}
+			
+			int sz = 100;
+			int d = 70;
+
+			PAINTSTRUCT ps;
+			BeginPaint(rw->m_hwnd, &ps);
+			RoundRect(dc_targ, 320+d-sz, 250, 320+d+sz, 400, 3, 3);
+			RoundRect(dc_targ, 640+320-d-sz, 250, 640+320-d+sz, 400, 3, 3);
+			
+			
+			TextOutW(dc_targ, 320+d, 300, L"Yunalus", 7);
+			TextOutW(dc_targ, 640+320-d, 300, L"Yunalus", 7);
+
+			TextOutW(dc_targ, 320+d, 300+30, L"Mikulus", 7);
+			TextOutW(dc_targ, 640+320-d, 300+30, L"Mikulus", 7);
+			EndPaint(rw->m_hwnd, &ps);
 
 			UpdateWindow(rw->m_hwnd);
 		}
-	};
+	private:
+};
 }
 
 		 

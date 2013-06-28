@@ -3,7 +3,7 @@
 using namespace System;
 using namespace System::Windows::Forms;
 
-
+[STAThreadAttribute]
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd){
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false);
