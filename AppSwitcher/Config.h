@@ -121,7 +121,7 @@ namespace AppSwitcher2 {
 			this->textBox1->Name = L"textBox1";
 			this->textBox1->Size = System::Drawing::Size(439, 19);
 			this->textBox1->TabIndex = 6;
-			this->textBox1->Text = L"C:\\Users\\xyx\\Desktop\\\\Oculus Demos\\Yunalus\\Yunalus.exe";
+			this->textBox1->Text = L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Yunalus\\Yunalus.exe";
 			// 
 			// label2
 			// 
@@ -202,9 +202,7 @@ namespace AppSwitcher2 {
 				throw gcnew Exception(String::Format("Couldn't find window for pid={0}.", proc->Id));
 			}
 		
-			if(!ConfigureAndRunUnityRiftApplication(target)){
-				throw gcnew Exception(String::Format("Failed to configure launcher.", proc->Id));
-			}
+			ConfigureAndRunUnityRiftApplication(target);
 
 			Thread::Sleep(1500); // wait 1500ms for Direct3D window to show up (it has different HWND!)
 
@@ -233,8 +231,8 @@ namespace AppSwitcher2 {
 		}
 
 		// Send messages to configure given launcher window.
-		// Return true if it (seems to) succeed. Return false otherwise.
-		bool ConfigureAndRunUnityRiftApplication(HWND target){
+		// throws Exception when failed
+		void ConfigureAndRunUnityRiftApplication(HWND target){
 			// get all child windows
 			ArrayList^ children = GetAllChildren(target);
 
@@ -260,7 +258,7 @@ namespace AppSwitcher2 {
 			}
 
 			if(!config_checkbox)
-				return false;
+				throw gcnew Exception(String::Format("Failed to check windowed checkbox."));
 
 			// run it
 			bool launched = false;
@@ -283,8 +281,8 @@ namespace AppSwitcher2 {
 				}
 			}
 
-			return launched;
-
+			if(!launched)
+				throw gcnew Exception(String::Format("Failed to find \"Play!\" button."));
 		}
 
 
@@ -294,7 +292,7 @@ namespace AppSwitcher2 {
 		}
 
 		ArrayList^ GetAllChildren(HWND parent, ArrayList^ children){
-			HWND child = child;
+			HWND child = 0;
 			while(true){
 				child = FindWindowExW(parent, child, NULL, NULL);
 				if(child){
