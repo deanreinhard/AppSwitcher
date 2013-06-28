@@ -4,7 +4,7 @@
 #include <vector>
 #include <OVR.h>
 
-namespace AppSwitcher2 {
+namespace AppSwitcher {
 
 	using namespace System;
 	using namespace System::ComponentModel;
@@ -27,9 +27,8 @@ namespace AppSwitcher2 {
 		Config()
 		{
 			InitializeComponent();
-			//
-			//TODO: ここにコンストラクター コードを追加します
-			//
+			
+			// get rift info
 			OVR::System::Init();
 
 			device_manager = OVR::DeviceManager::Create();
@@ -40,7 +39,7 @@ namespace AppSwitcher2 {
 			
 			String ^displayDeviceName = gcnew String(info.DisplayDeviceName);
 			String ^device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
-			label1->Text = String::Format("{0},{1} {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
+			labelRiftInfo->Text = String::Format("({0},{1}) {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
 
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 			
@@ -64,10 +63,11 @@ namespace AppSwitcher2 {
 	private: RiftWindow *rw;
 	private: HWND window_app;
 	private: System::Timers::Timer^ t;
+	private: System::Windows::Forms::Label^  labelRiftInfo;
 
 
 
-	private: System::Windows::Forms::Label^  label1;
+
 	private: System::Windows::Forms::Button^  button2;
 
 
@@ -89,21 +89,21 @@ namespace AppSwitcher2 {
 		/// </summary>
 		void InitializeComponent(void)
 		{
-			this->label1 = (gcnew System::Windows::Forms::Label());
+			this->labelRiftInfo = (gcnew System::Windows::Forms::Label());
 			this->button2 = (gcnew System::Windows::Forms::Button());
 			this->textBox1 = (gcnew System::Windows::Forms::TextBox());
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->label3 = (gcnew System::Windows::Forms::Label());
 			this->SuspendLayout();
 			// 
-			// label1
+			// labelRiftInfo
 			// 
-			this->label1->AutoSize = true;
-			this->label1->Location = System::Drawing::Point(12, 75);
-			this->label1->Name = L"label1";
-			this->label1->Size = System::Drawing::Size(35, 12);
-			this->label1->TabIndex = 2;
-			this->label1->Text = L"label1";
+			this->labelRiftInfo->AutoSize = true;
+			this->labelRiftInfo->Location = System::Drawing::Point(12, 75);
+			this->labelRiftInfo->Name = L"labelRiftInfo";
+			this->labelRiftInfo->Size = System::Drawing::Size(35, 12);
+			this->labelRiftInfo->TabIndex = 2;
+			this->labelRiftInfo->Text = L"label1";
 			// 
 			// button2
 			// 
@@ -150,7 +150,7 @@ namespace AppSwitcher2 {
 			this->Controls->Add(this->label2);
 			this->Controls->Add(this->textBox1);
 			this->Controls->Add(this->button2);
-			this->Controls->Add(this->label1);
+			this->Controls->Add(this->labelRiftInfo);
 			this->Name = L"Config";
 			this->Text = L"AppSwitcher (予定)";
 			this->ResumeLayout(false);
@@ -160,37 +160,12 @@ namespace AppSwitcher2 {
 #pragma endregion
 
 	private:
-		/*
-		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
-			std::vector<HWND> handles;
-			EnumWindows(reinterpret_cast<WNDENUMPROC>(list_proc), reinterpret_cast<LPARAM>(&handles));
-
-			for(HWND hwnd : handles){
-				// get title string
-				const int length = 256;
-				wchar_t str[length];
-				SendMessageW(hwnd, WM_GETTEXT, length, reinterpret_cast<LPARAM>(str));
-				String ^title = gcnew String(str);
-
-				// get size
-				RECT rect;
-				GetWindowRect(hwnd, &rect);
-
-				String ^rectdesc = String::Format("{0},{1},{2},{3}", rect.left, rect.top, rect.right, rect.bottom);
-
-				listBox1->Items->Add(String::Format("title={1} HWND={0} rect={2}",reinterpret_cast<int>(hwnd), title, rectdesc));
-			}
-
-			
-		}
-		*/
-
 		System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
 			LaunchUnityRiftApplication(textBox1->Text);
 		}
 
 		void LaunchUnityRiftApplication(String^ filepath){
-			Process ^proc = gcnew Process();
+			Process^ proc = gcnew Process();
 			proc->StartInfo->FileName = filepath;
 			proc->StartInfo->UseShellExecute = false; // this will also inhibit security warning
 			proc->Start();
@@ -286,7 +261,9 @@ namespace AppSwitcher2 {
 		}
 
 
-		// Run DFS search to get all children of given HWND. (including deep children)
+		/// <summary>
+		/// Run depth first search to get all children of given HWND. (including deep children)
+		/// </summary>
 		ArrayList^ GetAllChildren(HWND parent){
 			return GetAllChildren(parent, gcnew ArrayList());
 		}
@@ -306,14 +283,7 @@ namespace AppSwitcher2 {
 			return children;
 		}
 		
-		private: void CopyFrame(Object^ source, ElapsedEventArgs ^e){
-					 /*
-			RECT rect_app;
-			GetWindowRect(window_app, &rect_app);
-
-			RECT rect_cli;
-			GetClientRect(window_app, &rect_cli);
-			*/
+		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
 			POINT pt;
 			pt.x = 0;
 			pt.y = 0;
@@ -325,9 +295,7 @@ namespace AppSwitcher2 {
 
 			UpdateWindow(rw->m_hwnd);
 		}
-
-
-};
+	};
 }
 
 		 

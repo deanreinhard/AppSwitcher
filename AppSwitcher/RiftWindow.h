@@ -4,7 +4,7 @@
 #include <OVR.h>
 #include <vcclr.h>
 
-namespace AppSwitcher2 {
+namespace AppSwitcher {
 
 	using namespace System;
 	using namespace System::ComponentModel;
@@ -35,13 +35,8 @@ namespace AppSwitcher2 {
 				L"Deskope Window Class",
 				L"Deskope Window",
 				WS_POPUP,
-				/*100,100,
-				200,200,
-				*/
 				devmode.dmPosition.x, devmode.dmPosition.y,
 				devmode.dmPelsWidth, devmode.dmPelsHeight,
-				//m_RiftDisplayInfo.dmPosition.x, m_RiftDisplayInfo.dmPosition.y,
-				//m_RiftDisplayInfo.dmPelsWidth, m_RiftDisplayInfo.dmPelsHeight,
 				NULL,
 				NULL,
 				GetModuleHandle(NULL),

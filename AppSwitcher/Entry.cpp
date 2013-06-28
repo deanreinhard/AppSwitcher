@@ -8,6 +8,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false);
 
-	Application::Run(gcnew AppSwitcher2::Config());
+	Application::Run(gcnew AppSwitcher::Config());
 	return 0;
 }
