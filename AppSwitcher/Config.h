@@ -345,7 +345,7 @@ namespace AppSwitcher {
 				Thread::Sleep(step_wait);
 			}
 			if(!target)
-				throw gcnew Exception(String::Format("Couldn't find window for pid={0}.", proc->Id));
+				throw gcnew Exception(String::Format("Couldn't configure window for pid={0}.", proc->Id));
 
 
 			// Try to find new window associated with proc. Give up after 2.5 sec. (Unity main window has different HWND from launcher)
@@ -388,7 +388,7 @@ namespace AppSwitcher {
 			// get all child windows
 			ArrayList^ children = GetAllChildren(target);
 
-			// now try to configure
+			// checkbox
 			bool config_checkbox = false;
 			for each(Object^ hwnd_pre in children){
 				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(hwnd_pre));
@@ -409,7 +409,33 @@ namespace AppSwitcher {
 			}
 
 			if(!config_checkbox)
-				throw gcnew Exception(String::Format("Failed to check windowed checkbox."));
+				throw gcnew Exception("Failed to set windowed flag.");
+
+			// resolution
+			bool config_resolution = false;
+			for each(Object^ hwnd_pre in children){
+				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(hwnd_pre));
+
+				// get title string
+				const int length = 256;
+				wchar_t str[length];
+				GetClassNameW(hwnd, str, length);
+				String^ cls = gcnew String(str);
+
+				if(cls=="ComboBox"){
+					Generic::List<String^>^ entries = EnumerateComboBox(hwnd);
+					for(int i=0; i<entries->Count; i++){
+						if(entries[i] == "1280 x 800"){
+							if(SendMessage(hwnd, CB_SETCURSEL, i, 0) == i){ // correctly set
+								config_resolution = true;
+							}
+						}
+					}
+				}
+			}
+
+			if(!config_resolution)
+				throw gcnew NotSupportedException("Failed to set resolution to 1280x800.");
 
 			// run it
 			bool launched = false;
@@ -433,6 +459,25 @@ namespace AppSwitcher {
 
 			if(!launched)
 				throw gcnew Exception(String::Format("Failed to find \"Play!\" button."));
+		}
+
+		Generic::List<String^>^ EnumerateComboBox(HWND hwnd){
+			auto result = gcnew Generic::List<String^>();
+
+			int num = SendMessageW(hwnd, CB_GETCOUNT, 0, 0);
+			if(num == CB_ERR)
+				throw gcnew Exception("cannot enumerate combobox items");
+
+			for(int i=0; i<num; i++){
+				const int length = 256;
+				wchar_t str[length];
+				if(SendMessageW(hwnd, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(str)) == CB_ERR) // TODO: possibility of overflow
+					throw gcnew Exception("cannot enumerate combobox items");
+
+				result->Add(gcnew String(str));
+			}
+
+			return result;
 		}
 
 
