@@ -335,8 +335,11 @@ namespace AppSwitcher {
 				}
 				Thread::Sleep(step_wait);
 			}
-			if(!target)
-				throw gcnew Exception(String::Format("Couldn't configure window for pid={0}.", proc->Id));
+			if(!target){
+				int pid = proc->Id;
+				proc->Kill();
+				throw gcnew Exception(String::Format("Couldn't configure window for pid={0}.", pid));
+			}
 
 
 			// Try to find new window associated with proc. Give up after 2.5 sec. (Unity main window has different HWND from launcher)
@@ -349,8 +352,11 @@ namespace AppSwitcher {
 					break;
 				Thread::Sleep(step_wait);
 			}
-			if(!window || (window == target))
-				throw gcnew Exception(String::Format("Couldn't find launched window for pid={0}.", proc->Id));
+			if(!window || (window == target)){
+				int pid = proc->Id;
+				proc->Kill();
+				throw gcnew Exception(String::Format("Couldn't find launched window for pid={0}.", pid));
+			}
 
 			// we launch it anyway if window isn't big (since we don't set window parameters, it's possible)
 			currentProcess = proc;
