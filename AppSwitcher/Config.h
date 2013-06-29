@@ -307,7 +307,7 @@ namespace AppSwitcher {
 
 			if(msg.Msg == WM_HOTKEY){
 				if(currentProcess){
-					rw->window_app = nullptr;
+					rw->NotifyAppTerminate();
 					currentProcess->Kill();
 					currentProcess = nullptr;
 				}
@@ -363,7 +363,7 @@ namespace AppSwitcher {
 
 			// we launch it anyway if window isn't big (since we don't set window parameters, it's possible)
 			currentProcess = proc;
-			rw->window_app = window;
+			rw->NotifyAppChange(window);
 		}
 
 		HWND GetTopLevelWindowForProcessId(int pid){
@@ -458,11 +458,6 @@ namespace AppSwitcher {
 			return children;
 		}
 		
-		void RequestRedraw(Object^ source, ElapsedEventArgs ^e){
-			InvalidateRect(rw->m_hwnd, nullptr, FALSE);
-			UpdateWindow(rw->m_hwnd);
-		}
-
 private: System::Void listBox1_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
 			 int ix = listBox1->SelectedIndex;
 			 if(ix>=0){

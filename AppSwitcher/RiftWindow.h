@@ -14,21 +14,28 @@ namespace AppSwitcher {
 	using namespace System::Data;
 	using namespace System::Drawing;
 	
+	enum EffectMode{
+		ST_APP,
+		ST_HOME,
+		ST_ENTERING,
+		ST_LEAVING
+	};
+
 	/// Stream video to rift by creating large window there.
 	public class RiftWindow {
 	public:
-		RiftWindow(String^ device) : window_app(nullptr) {
+		RiftWindow(String^ device) : window_app(nullptr), changed(false), mode(ST_HOME), alpha(0) {
 			InitializeWindow(device);
 
 			// InvalidateRect & WindowUpdate just set some internal flags, and actual # of WM_PAINT is lower.
 			// So it's ok to call it more than possible to make it draw as often as possible.
 			// See http://blogs.msdn.com/b/oldnewthing/archive/2011/12/19/10249000.aspx for detail.
-			SetTimer(m_hwnd, 1, 10, nullptr); // 100 fps at most
+			SetTimer(handle, 1, 10, nullptr); // 100 fps at most
 			
 			InitializeD2D();
 		}
 	private:
-		// Create Window and blahblah. m_hwnd will be non-null after this.
+		// Create Window and blahblah. handle will be non-null after this.
 		void InitializeWindow(String^ display_device){
 			DEVMODEW devmode;
 			pin_ptr<const wchar_t> wch = PtrToStringChars(display_device);
@@ -41,7 +48,7 @@ namespace AppSwitcher {
 			wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
 			RegisterClassW(&wc);
-			m_hwnd = CreateWindowExW(WS_EX_TOOLWINDOW , // | WS_EX_TRANSPARENT,
+			handle = CreateWindowExW(WS_EX_TOOLWINDOW , // | WS_EX_TRANSPARENT,
 				L"AppSwitcher Window Class",
 				L"AppSwitcher Window",
 				WS_POPUP,
@@ -51,19 +58,19 @@ namespace AppSwitcher {
 				nullptr,
 				GetModuleHandle(nullptr),
 				this);	//pass the window a pointer to this Scope object
-			ShowWindow(m_hwnd, SW_SHOW);
+			ShowWindow(handle, SW_SHOW);
 		}
 
-		// requires m_hwnd to be set
+		// requires handle to be set
 		void InitializeD2D(){
 			direct2DFactory = nullptr;
 			D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory);
 			RECT rect;
-			GetClientRect(m_hwnd, &rect);
+			GetClientRect(handle, &rect);
 
 			renderTarget = nullptr;
 			direct2DFactory->CreateHwndRenderTarget(D2D1::RenderTargetProperties(),
-				D2D1::HwndRenderTargetProperties(m_hwnd, D2D1::SizeU(rect.right-rect.left, rect.bottom-rect.top)),
+				D2D1::HwndRenderTargetProperties(handle, D2D1::SizeU(rect.right-rect.left, rect.bottom-rect.top)),
 				&renderTarget);
 
 			// create bitmap
@@ -74,9 +81,8 @@ namespace AppSwitcher {
 				&bitmap_d2d)))
 				throw gcnew NotSupportedException("Couldn't allocate B8G8R8A8 premultiplied-alpha bitmap");
 		}
-	protected:
-		~RiftWindow()
-		{
+
+		~RiftWindow() {
 			if(bitmap_d2d)
 				bitmap_d2d->Release();
 
@@ -87,6 +93,18 @@ namespace AppSwitcher {
 				direct2DFactory->Release();
 		}
 
+	public:
+		void NotifyAppChange(HWND app){
+			window_app = app;
+			changed = true; // "wait for content ready" flag
+		}
+
+		void NotifyAppTerminate(){
+			window_app = nullptr;
+			mode = ST_LEAVING;
+		}
+
+	private:
 		static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			RiftWindow * pThis = NULL;
@@ -96,7 +114,7 @@ namespace AppSwitcher {
 				pThis = reinterpret_cast<RiftWindow*>(pCreate->lpCreateParams);
 				SetWindowLongW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG>(pThis));
 
-				pThis->m_hwnd = hwnd;
+				pThis->handle = hwnd;
 			}
 			else
 			{
@@ -159,6 +177,10 @@ namespace AppSwitcher {
 
 					if(buffer[0]<100){ // it's likely to be showing oculus content
 						bitmap_d2d->CopyFromMemory(nullptr, buffer, stride);
+						if(changed){ // initiate fade-in if this is the first time
+							changed = false;
+							mode = ST_ENTERING;
+						}
 					}
 					lock->Release();
 				}
@@ -169,20 +191,49 @@ namespace AppSwitcher {
 			}
 
 			// render
-			ID2D1SolidColorBrush* brush = nullptr;
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Beige), &brush);
-
 			renderTarget->BeginDraw();
 
+			// background
 			renderTarget->DrawBitmap(bitmap_d2d);
+			if(alpha<1){
+				ID2D1SolidColorBrush* brush = nullptr;
+				renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1.0f-alpha), &brush);
+				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
+				brush->Release();
+			}
 
+			// HUD
+			ID2D1SolidColorBrush* brush = nullptr;
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Beige), &brush);
 			renderTarget->DrawRectangle(D2D1::RectF(320+d-sz, 250, 320+d+sz, 400), brush);
 			renderTarget->DrawRectangle(D2D1::RectF(640+320-d-sz, 250, 640+320-d+sz, 400), brush);
+			brush->Release();
 					
 			renderTarget->EndDraw();
 
-			if(brush)
-				brush->Release();
+			// animate
+			switch(mode){
+			case ST_HOME:
+				alpha = 0;
+				break;
+			case ST_APP:
+				alpha = 1.0f;
+				break;
+			case ST_ENTERING:
+				alpha += 0.01f;
+				if(alpha>1.0f){
+					mode = ST_APP;
+					alpha = 1.0f;
+				}
+				break;
+			case ST_LEAVING:
+				alpha -= 0.01f;
+				if(alpha<0){
+					mode = ST_HOME;
+					alpha = 0;
+				}
+				break;
+			}
 		}
 
 		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam){
@@ -194,20 +245,24 @@ namespace AppSwitcher {
 				RenderFrame();
 				return 0;
 			case WM_TIMER:
-				InvalidateRect(m_hwnd, nullptr, FALSE);
-				UpdateWindow(m_hwnd);
+				InvalidateRect(handle, nullptr, FALSE);
+				UpdateWindow(handle);
 				return 0;
 			}
-			return DefWindowProc(m_hwnd, message, wParam, lParam);
+			return DefWindowProc(handle, message, wParam, lParam);
 		}
-
-	public:
-		HWND m_hwnd;
-		HWND window_app;
+	
 	private:
+		HWND handle;
+		HWND window_app;
+	private: // D2D things
 		ID2D1Bitmap* bitmap_d2d;
 		ID2D1Factory* direct2DFactory;
 		ID2D1HwndRenderTarget* renderTarget;
+	private:
+		bool changed;
+		EffectMode mode;
+		float alpha; // 1:app 0:home
 	};
 }
 
