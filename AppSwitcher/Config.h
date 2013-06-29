@@ -16,7 +16,6 @@ namespace AppSwitcher {
 	using namespace System::Drawing;
 	using namespace System::Diagnostics;
 	using namespace System::Threading;
-	using namespace System::Timers;
 	using namespace System::Web::Script::Serialization;
 	
 
@@ -31,10 +30,6 @@ namespace AppSwitcher {
 		Config()
 		{
 			InitializeComponent();
-
-			// load model & apply to view
-			config = LoadConfig("config.json");
-			ApplyConfigToView(false);
 			
 			// get rift info
 			OVR::System::Init();
@@ -45,23 +40,17 @@ namespace AppSwitcher {
 			OVR::HMDInfo info;
 			hmd->GetDeviceInfo(&info);
 			
-			String ^displayDeviceName = gcnew String(info.DisplayDeviceName);
-			String ^device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
+			String^ displayDeviceName = gcnew String(info.DisplayDeviceName);
+			String^ device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
 			labelRiftInfo->Text = String::Format("({0},{1}) {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
-
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
-			
 
+			// create rift window
+			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp));
 
-			// setup rift video stream
-			rw = new RiftWindow(device);
-
-			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
-			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
-			t->Enabled = true;
-
-			// register hotkey
-			RegisterHotKey(static_cast<HWND>(Handle.ToPointer()), 0, MOD_CONTROL | MOD_SHIFT, 'Z');
+			// load model & apply to view
+			config = LoadConfig("config.json");
+			ApplyConfigToView(false);
 		}
 
 	protected:
@@ -111,18 +100,12 @@ namespace AppSwitcher {
 		}
 
 	
-	private: OVR::DeviceManager *device_manager;
-	private: RiftWindow *rw;
-	//private: HWND window_app;
-	private: System::Timers::Timer^ t;
+	private: OVR::DeviceManager* device_manager;
+	private: RiftWindow* rw;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
 	private: Generic::List<AppConfig^>^ config;
-	private: int currentAppIx;
 	private: Process^ currentProcess;
-
-
-
 
 
 
@@ -132,8 +115,8 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::Button^  button1;
 	private: System::Windows::Forms::ListBox^  listBox1;
 	private: System::Windows::Forms::Button^  button3;
-private: System::Windows::Forms::Label^  label1;
-private: System::Windows::Forms::Button^  buttonRemove;
+	private: System::Windows::Forms::Label^  label1;
+	private: System::Windows::Forms::Button^  buttonRemove;
 
 	protected: 
 
@@ -231,9 +214,9 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			this->label1->AutoSize = true;
 			this->label1->Location = System::Drawing::Point(14, 340);
 			this->label1->Name = L"label1";
-			this->label1->Size = System::Drawing::Size(173, 12);
+			this->label1->Size = System::Drawing::Size(199, 12);
 			this->label1->TabIndex = 12;
-			this->label1->Text = L"Press Ctrl+Shift+Z to switch app";
+			this->label1->Text = L"Press Ctrl+Shift+Z to show/hide HUD";
 			// 
 			// buttonRemove
 			// 
@@ -273,12 +256,12 @@ private: System::Windows::Forms::Button^  buttonRemove;
 		/// Update listBox1 to show current config.
 		/// <param name="preserveIndex">keep current selected index if true. Otherwise it'll be unselected</param>
 		void ApplyConfigToView(bool preserveIndex){
+			// View in Config window
 			int ix = listBox1->SelectedIndex;
 			listBox1->Items->Clear();
-
-			auto ie = config->GetEnumerator();
-			while(ie.MoveNext()){
-				listBox1->Items->Add(ie.Current->path);
+			
+			for each(AppConfig^ cfg in config){
+				listBox1->Items->Add(cfg->path);
 			}
 
 			if(ix>=0 && preserveIndex){
@@ -287,6 +270,9 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			else{
 				listBox1->SelectedIndex = -1;
 			}
+
+			// View in HUD window
+			rw->NotifyModelChange(config);
 		}
 
 		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
@@ -311,49 +297,77 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			} // squash error
 		 }
 
+		void SwitchApp(int ix){
+			if(currentProcess){
+				rw->NotifyAppTerminate();
+				currentProcess->Kill();
+				currentProcess = nullptr;
+			}
+
+			LaunchUnityRiftApplication(config[ix]->path);
+		}
 		
 		protected:
-		virtual System::Void WndProc(Message% msg) override {
-			Form::WndProc(msg);
-
-			if(msg.Msg == WM_HOTKEY){
-				if(currentProcess){
-					rw->window_app = 0;
-					currentProcess->Kill();
-					currentProcess = nullptr;
-				}
-
-				LaunchUnityRiftApplication(config[currentAppIx]->path);
-				currentAppIx = (currentAppIx+1)%config->Count;
-			}
-		}
-
 		void LaunchUnityRiftApplication(String^ filepath){
+			const int max_wait_ms = 2500; // maximum duration for trying
+			const int step_wait = 100; // time until retry
+
 			Process^ proc = gcnew Process();
 			proc->StartInfo->FileName = filepath;
 			proc->StartInfo->UseShellExecute = false; // this will also inhibit security warning
 			proc->Start();
 
-			Thread::Sleep(1500); // wait 1500ms for window to show up (TODO: come up with more robust method)
+			// Try to configure window associated with proc. Give up after 2.5 sec.
+			// This approach is retry(2.5s)(find window + configure). Avoid retry(2.5s)(find window) + configure because it's unstable.
+			HWND target = nullptr;
 			
-			HWND target = GetTopLevelWindowForProcessId(proc->Id);
-			if(!target){
-				throw gcnew Exception(String::Format("Couldn't find window for pid={0}.", proc->Id));
+			ULONGLONG t0 = GetTickCount64();
+			while(GetTickCount64() < t0 + max_wait_ms){
+				target = GetTopLevelWindowForProcessId(proc->Id);
+				if(target){
+					try{
+						ConfigureAndRunUnityRiftApplication(target);
+						break; // successfully launched
+					}
+					catch(Exception^ e){
+						target = nullptr; // failed; reset target to show failure
+					}
+				}
+				Thread::Sleep(step_wait);
 			}
-		
-			ConfigureAndRunUnityRiftApplication(target);
+			if(!target){
+				int pid = proc->Id;
+				proc->Kill();
+				throw gcnew Exception(String::Format("Couldn't configure window for pid={0}.", pid));
+			}
 
-			Thread::Sleep(1500); // wait 1500ms for Direct3D window to show up (it has different HWND!)
 
+			// Try to find new window associated with proc. Give up after 2.5 sec. (Unity main window has different HWND from launcher)
+			HWND window = nullptr;
+
+			t0 = GetTickCount64();
+			while(GetTickCount64() < t0 + max_wait_ms){
+				window = GetTopLevelWindowForProcessId(proc->Id);
+				if(window && window != target)
+					break;
+				Thread::Sleep(step_wait);
+			}
+			if(!window || (window == target)){
+				int pid = proc->Id;
+				proc->Kill();
+				throw gcnew Exception(String::Format("Couldn't find launched window for pid={0}.", pid));
+			}
+
+			// we launch it anyway if window isn't big (since we don't set window parameters, it's possible)
 			currentProcess = proc;
-			rw->window_app = GetTopLevelWindowForProcessId(proc->Id);
+			rw->NotifyAppChange(window);
 		}
 
 		HWND GetTopLevelWindowForProcessId(int pid){
 			std::vector<HWND> top_windows;
 			EnumWindows(reinterpret_cast<WNDENUMPROC>(list_proc), reinterpret_cast<LPARAM>(&top_windows));
 
-			HWND target = 0;
+			HWND target = nullptr;
 			for(auto top_window : top_windows){
 				DWORD pid_current;
 				GetWindowThreadProcessId(top_window, &pid_current);
@@ -371,11 +385,10 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			// get all child windows
 			ArrayList^ children = GetAllChildren(target);
 
-			// now try to configure
+			// checkbox
 			bool config_checkbox = false;
-			IEnumerator^ it = children->GetEnumerator();
-			while(it->MoveNext()){
-				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(it->Current));
+			for each(Object^ hwnd_pre in children){
+				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(hwnd_pre));
 
 				// get title string
 				const int length = 256;
@@ -393,13 +406,38 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			}
 
 			if(!config_checkbox)
-				throw gcnew Exception(String::Format("Failed to check windowed checkbox."));
+				throw gcnew Exception("Failed to set windowed flag.");
+
+			// resolution
+			bool config_resolution = false;
+			for each(Object^ hwnd_pre in children){
+				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(hwnd_pre));
+
+				// get title string
+				const int length = 256;
+				wchar_t str[length];
+				GetClassNameW(hwnd, str, length);
+				String^ cls = gcnew String(str);
+
+				if(cls=="ComboBox"){
+					Generic::List<String^>^ entries = EnumerateComboBox(hwnd);
+					for(int i=0; i<entries->Count; i++){
+						if(entries[i] == "1280 x 800"){
+							if(SendMessage(hwnd, CB_SETCURSEL, i, 0) == i){ // correctly set
+								config_resolution = true;
+							}
+						}
+					}
+				}
+			}
+
+			if(!config_resolution)
+				throw gcnew NotSupportedException("Failed to set resolution to 1280x800.");
 
 			// run it
 			bool launched = false;
-			it = children->GetEnumerator();
-			while(it->MoveNext()){
-				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(it->Current));
+			for each(Object^ hwnd_pre in children){
+				HWND hwnd = reinterpret_cast<HWND>(Convert::ToInt32(hwnd_pre));
 
 				// get title string
 				const int length = 256;
@@ -420,6 +458,25 @@ private: System::Windows::Forms::Button^  buttonRemove;
 				throw gcnew Exception(String::Format("Failed to find \"Play!\" button."));
 		}
 
+		Generic::List<String^>^ EnumerateComboBox(HWND hwnd){
+			auto result = gcnew Generic::List<String^>();
+
+			int num = SendMessageW(hwnd, CB_GETCOUNT, 0, 0);
+			if(num == CB_ERR)
+				throw gcnew Exception("cannot enumerate combobox items");
+
+			for(int i=0; i<num; i++){
+				const int length = 256;
+				wchar_t str[length];
+				if(SendMessageW(hwnd, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(str)) == CB_ERR) // TODO: possibility of overflow
+					throw gcnew Exception("cannot enumerate combobox items");
+
+				result->Add(gcnew String(str));
+			}
+
+			return result;
+		}
+
 
 		/// <summary>
 		/// Run depth first search to get all children of given HWND. (including deep children)
@@ -431,7 +488,7 @@ private: System::Windows::Forms::Button^  buttonRemove;
 		ArrayList^ GetAllChildren(HWND parent, ArrayList^ children){
 			HWND child = 0;
 			while(true){
-				child = FindWindowExW(parent, child, NULL, NULL);
+				child = FindWindowExW(parent, child, nullptr, nullptr);
 				if(child){
 					children->Add(reinterpret_cast<int>(child));
 					GetAllChildren(child, children);
@@ -443,10 +500,6 @@ private: System::Windows::Forms::Button^  buttonRemove;
 			return children;
 		}
 		
-		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
-			InvalidateRect(rw->m_hwnd, NULL, FALSE);
-			UpdateWindow(rw->m_hwnd);
-		}
 private: System::Void listBox1_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
 			 int ix = listBox1->SelectedIndex;
 			 if(ix>=0){
