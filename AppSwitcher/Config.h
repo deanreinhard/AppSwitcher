@@ -1,12 +1,14 @@
 #pragma once
 #include "RiftWindow.h"
+#include "AppConfig.h"
 #include <Windows.h>
 #include <vector>
 #include <OVR.h>
 
-namespace AppSwitcher2 {
+namespace AppSwitcher {
 
 	using namespace System;
+	using namespace System::IO;
 	using namespace System::ComponentModel;
 	using namespace System::Collections;
 	using namespace System::Windows::Forms;
@@ -15,11 +17,13 @@ namespace AppSwitcher2 {
 	using namespace System::Diagnostics;
 	using namespace System::Threading;
 	using namespace System::Timers;
+	using namespace System::Web::Script::Serialization;
+	
 
 	bool CALLBACK list_proc(HWND hwnd, LPARAM param);
 
 	/// <summary>
-	/// Config の概要
+	/// Config is the configuration window for AppSwitcher. Config also handles actual application execution.
 	/// </summary>
 	public ref class Config : public System::Windows::Forms::Form
 	{
@@ -27,9 +31,12 @@ namespace AppSwitcher2 {
 		Config()
 		{
 			InitializeComponent();
-			//
-			//TODO: ここにコンストラクター コードを追加します
-			//
+
+			// load model & apply to view
+			config = LoadConfig("config.json");
+			ApplyConfigToView(false);
+			
+			// get rift info
 			OVR::System::Init();
 
 			device_manager = OVR::DeviceManager::Create();
@@ -40,13 +47,55 @@ namespace AppSwitcher2 {
 			
 			String ^displayDeviceName = gcnew String(info.DisplayDeviceName);
 			String ^device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
-			label1->Text = String::Format("{0},{1} {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
+			labelRiftInfo->Text = String::Format("({0},{1}) {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
 
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 			
 
 
+			// setup rift video stream
 			rw = new RiftWindow(device);
+
+			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
+			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
+			t->Enabled = true;
+
+			// register hotkey
+			RegisterHotKey(static_cast<HWND>(Handle.ToPointer()), 0, MOD_CONTROL | MOD_SHIFT, 'Z');
+		}
+
+	protected:
+		// Load config from specified path. Return default one if failed to open / invalid config etc. occurs.
+		Generic::List<AppConfig^>^ LoadConfig(String^ path){
+			auto ls = gcnew Generic::List<AppConfig^>();
+
+			try{
+				
+				auto file = File::OpenText(path);
+				String^ json = file->ReadToEnd();
+				file->Close();
+
+				auto ser = gcnew JavaScriptSerializer();
+				auto ls_path = ser->Deserialize<Generic::List<AppConfig^>^>(json);
+				if(ls_path == nullptr){
+					return ls;
+				}
+
+				return ls_path;
+			}
+			catch(FileNotFoundException^ e){
+			}
+
+			return ls;
+		}
+
+		void SaveConfig(String^ path, Generic::List<AppConfig^>^ config){
+			auto ser = gcnew JavaScriptSerializer();
+			auto json = ser->Serialize(config);
+			auto file = File::CreateText(path);
+			file->Write(json);
+			file->Flush();
+			file->Close();
 		}
 
 	protected:
@@ -60,20 +109,32 @@ namespace AppSwitcher2 {
 				delete components;
 			}
 		}
+
+	
 	private: OVR::DeviceManager *device_manager;
 	private: RiftWindow *rw;
-	private: HWND window_app;
+	//private: HWND window_app;
 	private: System::Timers::Timer^ t;
+	private: System::Windows::Forms::Label^  labelRiftInfo;
+
+	private: Generic::List<AppConfig^>^ config;
+	private: int currentAppIx;
+	private: Process^ currentProcess;
 
 
 
-	private: System::Windows::Forms::Label^  label1;
-	private: System::Windows::Forms::Button^  button2;
+
 
 
 	private: System::Windows::Forms::TextBox^  textBox1;
 	private: System::Windows::Forms::Label^  label2;
 	private: System::Windows::Forms::Label^  label3;
+	private: System::Windows::Forms::Button^  button1;
+	private: System::Windows::Forms::ListBox^  listBox1;
+	private: System::Windows::Forms::Button^  button3;
+private: System::Windows::Forms::Label^  label1;
+private: System::Windows::Forms::Button^  buttonRemove;
+
 	protected: 
 
 	private:
@@ -89,31 +150,25 @@ namespace AppSwitcher2 {
 		/// </summary>
 		void InitializeComponent(void)
 		{
-			this->label1 = (gcnew System::Windows::Forms::Label());
-			this->button2 = (gcnew System::Windows::Forms::Button());
+			this->labelRiftInfo = (gcnew System::Windows::Forms::Label());
 			this->textBox1 = (gcnew System::Windows::Forms::TextBox());
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->label3 = (gcnew System::Windows::Forms::Label());
+			this->button1 = (gcnew System::Windows::Forms::Button());
+			this->listBox1 = (gcnew System::Windows::Forms::ListBox());
+			this->button3 = (gcnew System::Windows::Forms::Button());
+			this->label1 = (gcnew System::Windows::Forms::Label());
+			this->buttonRemove = (gcnew System::Windows::Forms::Button());
 			this->SuspendLayout();
 			// 
-			// label1
+			// labelRiftInfo
 			// 
-			this->label1->AutoSize = true;
-			this->label1->Location = System::Drawing::Point(12, 75);
-			this->label1->Name = L"label1";
-			this->label1->Size = System::Drawing::Size(35, 12);
-			this->label1->TabIndex = 2;
-			this->label1->Text = L"label1";
-			// 
-			// button2
-			// 
-			this->button2->Location = System::Drawing::Point(14, 105);
-			this->button2->Name = L"button2";
-			this->button2->Size = System::Drawing::Size(75, 23);
-			this->button2->TabIndex = 3;
-			this->button2->Text = L"launch";
-			this->button2->UseVisualStyleBackColor = true;
-			this->button2->Click += gcnew System::EventHandler(this, &Config::button2_Click);
+			this->labelRiftInfo->AutoSize = true;
+			this->labelRiftInfo->Location = System::Drawing::Point(12, 277);
+			this->labelRiftInfo->Name = L"labelRiftInfo";
+			this->labelRiftInfo->Size = System::Drawing::Size(35, 12);
+			this->labelRiftInfo->TabIndex = 2;
+			this->labelRiftInfo->Text = L"label1";
 			// 
 			// textBox1
 			// 
@@ -121,7 +176,7 @@ namespace AppSwitcher2 {
 			this->textBox1->Name = L"textBox1";
 			this->textBox1->Size = System::Drawing::Size(439, 19);
 			this->textBox1->TabIndex = 6;
-			this->textBox1->Text = L"C:\\Users\\xyx\\Desktop\\\\Oculus Demos\\Yunalus\\Yunalus.exe";
+			this->textBox1->TextChanged += gcnew System::EventHandler(this, &Config::textBox1_TextChanged);
 			// 
 			// label2
 			// 
@@ -135,24 +190,79 @@ namespace AppSwitcher2 {
 			// label3
 			// 
 			this->label3->AutoSize = true;
-			this->label3->Location = System::Drawing::Point(12, 63);
+			this->label3->Location = System::Drawing::Point(12, 265);
 			this->label3->Name = L"label3";
 			this->label3->Size = System::Drawing::Size(89, 12);
 			this->label3->TabIndex = 8;
 			this->label3->Text = L"Rift Display Info";
 			// 
+			// button1
+			// 
+			this->button1->Location = System::Drawing::Point(459, 31);
+			this->button1->Name = L"button1";
+			this->button1->Size = System::Drawing::Size(75, 23);
+			this->button1->TabIndex = 9;
+			this->button1->Text = L"Browse";
+			this->button1->UseVisualStyleBackColor = true;
+			this->button1->Click += gcnew System::EventHandler(this, &Config::button1_Click);
+			// 
+			// listBox1
+			// 
+			this->listBox1->FormattingEnabled = true;
+			this->listBox1->ItemHeight = 12;
+			this->listBox1->Location = System::Drawing::Point(14, 83);
+			this->listBox1->Name = L"listBox1";
+			this->listBox1->Size = System::Drawing::Size(520, 172);
+			this->listBox1->TabIndex = 10;
+			this->listBox1->SelectedIndexChanged += gcnew System::EventHandler(this, &Config::listBox1_SelectedIndexChanged);
+			// 
+			// button3
+			// 
+			this->button3->Location = System::Drawing::Point(14, 54);
+			this->button3->Name = L"button3";
+			this->button3->Size = System::Drawing::Size(75, 23);
+			this->button3->TabIndex = 11;
+			this->button3->Text = L"Add";
+			this->button3->UseVisualStyleBackColor = true;
+			this->button3->Click += gcnew System::EventHandler(this, &Config::button3_Click);
+			// 
+			// label1
+			// 
+			this->label1->AutoSize = true;
+			this->label1->Location = System::Drawing::Point(14, 340);
+			this->label1->Name = L"label1";
+			this->label1->Size = System::Drawing::Size(173, 12);
+			this->label1->TabIndex = 12;
+			this->label1->Text = L"Press Ctrl+Shift+Z to switch app";
+			// 
+			// buttonRemove
+			// 
+			this->buttonRemove->Enabled = false;
+			this->buttonRemove->Location = System::Drawing::Point(95, 54);
+			this->buttonRemove->Name = L"buttonRemove";
+			this->buttonRemove->Size = System::Drawing::Size(75, 23);
+			this->buttonRemove->TabIndex = 13;
+			this->buttonRemove->Text = L"Remove";
+			this->buttonRemove->UseVisualStyleBackColor = true;
+			this->buttonRemove->Click += gcnew System::EventHandler(this, &Config::buttonRemove_Click);
+			// 
 			// Config
 			// 
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 12);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
-			this->ClientSize = System::Drawing::Size(508, 139);
+			this->ClientSize = System::Drawing::Size(721, 364);
+			this->Controls->Add(this->buttonRemove);
+			this->Controls->Add(this->label1);
+			this->Controls->Add(this->button3);
+			this->Controls->Add(this->listBox1);
+			this->Controls->Add(this->button1);
 			this->Controls->Add(this->label3);
 			this->Controls->Add(this->label2);
 			this->Controls->Add(this->textBox1);
-			this->Controls->Add(this->button2);
-			this->Controls->Add(this->label1);
+			this->Controls->Add(this->labelRiftInfo);
 			this->Name = L"Config";
-			this->Text = L"AppSwitcher (予定)";
+			this->Text = L"AppSwitcher";
+			this->FormClosed += gcnew System::Windows::Forms::FormClosedEventHandler(this, &Config::Config_FormClosed);
 			this->ResumeLayout(false);
 			this->PerformLayout();
 
@@ -160,37 +270,66 @@ namespace AppSwitcher2 {
 #pragma endregion
 
 	private:
-		/*
-		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
-			std::vector<HWND> handles;
-			EnumWindows(reinterpret_cast<WNDENUMPROC>(list_proc), reinterpret_cast<LPARAM>(&handles));
+		/// Update listBox1 to show current config.
+		/// <param name="preserveIndex">keep current selected index if true. Otherwise it'll be unselected</param>
+		void ApplyConfigToView(bool preserveIndex){
+			int ix = listBox1->SelectedIndex;
+			listBox1->Items->Clear();
 
-			for(HWND hwnd : handles){
-				// get title string
-				const int length = 256;
-				wchar_t str[length];
-				SendMessageW(hwnd, WM_GETTEXT, length, reinterpret_cast<LPARAM>(str));
-				String ^title = gcnew String(str);
-
-				// get size
-				RECT rect;
-				GetWindowRect(hwnd, &rect);
-
-				String ^rectdesc = String::Format("{0},{1},{2},{3}", rect.left, rect.top, rect.right, rect.bottom);
-
-				listBox1->Items->Add(String::Format("title={1} HWND={0} rect={2}",reinterpret_cast<int>(hwnd), title, rectdesc));
+			auto ie = config->GetEnumerator();
+			while(ie.MoveNext()){
+				listBox1->Items->Add(ie.Current->path);
 			}
 
-			
+			if(ix>=0 && preserveIndex){
+				listBox1->SelectedIndex = ix;
+			}
+			else{
+				listBox1->SelectedIndex = -1;
+			}
 		}
-		*/
 
-		System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
-			LaunchUnityRiftApplication(textBox1->Text);
+		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
+			auto dialog = gcnew OpenFileDialog();
+			dialog->Filter = "Executable Files (*.exe)|*.exe";
+			if(dialog->ShowDialog() == Windows::Forms::DialogResult::OK){
+				textBox1->Text = dialog->FileName;
+			}
+		}
+
+		System::Void button3_Click(System::Object^  sender, System::EventArgs^  e) {
+			config->Add(gcnew AppConfig(textBox1->Text));
+			textBox1->Text = "";
+			ApplyConfigToView(true);
+		}
+
+		System::Void Config_FormClosed(System::Object^  sender, System::Windows::Forms::FormClosedEventArgs^  e) {
+			try{
+				SaveConfig("config.json", config);
+			}
+			catch(Exception^ e){
+			} // squash error
+		 }
+
+		
+		protected:
+		virtual System::Void WndProc(Message% msg) override {
+			Form::WndProc(msg);
+
+			if(msg.Msg == WM_HOTKEY){
+				if(currentProcess){
+					rw->window_app = 0;
+					currentProcess->Kill();
+					currentProcess = nullptr;
+				}
+
+				LaunchUnityRiftApplication(config[currentAppIx]->path);
+				currentAppIx = (currentAppIx+1)%config->Count;
+			}
 		}
 
 		void LaunchUnityRiftApplication(String^ filepath){
-			Process ^proc = gcnew Process();
+			Process^ proc = gcnew Process();
 			proc->StartInfo->FileName = filepath;
 			proc->StartInfo->UseShellExecute = false; // this will also inhibit security warning
 			proc->Start();
@@ -202,18 +341,12 @@ namespace AppSwitcher2 {
 				throw gcnew Exception(String::Format("Couldn't find window for pid={0}.", proc->Id));
 			}
 		
-			if(!ConfigureAndRunUnityRiftApplication(target)){
-				throw gcnew Exception(String::Format("Failed to configure launcher.", proc->Id));
-			}
+			ConfigureAndRunUnityRiftApplication(target);
 
 			Thread::Sleep(1500); // wait 1500ms for Direct3D window to show up (it has different HWND!)
 
-			window_app = GetTopLevelWindowForProcessId(proc->Id);
-
-			// start timer
-			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
-			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
-			t->Enabled = true;
+			currentProcess = proc;
+			rw->window_app = GetTopLevelWindowForProcessId(proc->Id);
 		}
 
 		HWND GetTopLevelWindowForProcessId(int pid){
@@ -233,8 +366,8 @@ namespace AppSwitcher2 {
 		}
 
 		// Send messages to configure given launcher window.
-		// Return true if it (seems to) succeed. Return false otherwise.
-		bool ConfigureAndRunUnityRiftApplication(HWND target){
+		// throws Exception when failed
+		void ConfigureAndRunUnityRiftApplication(HWND target){
 			// get all child windows
 			ArrayList^ children = GetAllChildren(target);
 
@@ -260,7 +393,7 @@ namespace AppSwitcher2 {
 			}
 
 			if(!config_checkbox)
-				return false;
+				throw gcnew Exception(String::Format("Failed to check windowed checkbox."));
 
 			// run it
 			bool launched = false;
@@ -283,18 +416,20 @@ namespace AppSwitcher2 {
 				}
 			}
 
-			return launched;
-
+			if(!launched)
+				throw gcnew Exception(String::Format("Failed to find \"Play!\" button."));
 		}
 
 
-		// Run DFS search to get all children of given HWND. (including deep children)
+		/// <summary>
+		/// Run depth first search to get all children of given HWND. (including deep children)
+		/// </summary>
 		ArrayList^ GetAllChildren(HWND parent){
 			return GetAllChildren(parent, gcnew ArrayList());
 		}
 
 		ArrayList^ GetAllChildren(HWND parent, ArrayList^ children){
-			HWND child = child;
+			HWND child = 0;
 			while(true){
 				child = FindWindowExW(parent, child, NULL, NULL);
 				if(child){
@@ -308,27 +443,33 @@ namespace AppSwitcher2 {
 			return children;
 		}
 		
-		private: void CopyFrame(Object^ source, ElapsedEventArgs ^e){
-					 /*
-			RECT rect_app;
-			GetWindowRect(window_app, &rect_app);
-
-			RECT rect_cli;
-			GetClientRect(window_app, &rect_cli);
-			*/
-			POINT pt;
-			pt.x = 0;
-			pt.y = 0;
-			ClientToScreen(window_app, &pt);
-
-			HDC dc_all = GetDC(0);
-			HDC dc_targ = GetDC(rw->m_hwnd);
-			BitBlt(dc_targ, 0, 0, 1280, 800, dc_all, pt.x, pt.y, SRCCOPY);
-
+		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
+			InvalidateRect(rw->m_hwnd, NULL, FALSE);
 			UpdateWindow(rw->m_hwnd);
 		}
-
-
+private: System::Void listBox1_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
+			 int ix = listBox1->SelectedIndex;
+			 if(ix>=0){
+				textBox1->Text = config[ix]->path;
+				buttonRemove->Enabled = true;
+			 }
+			 else{
+				 buttonRemove->Enabled = false;
+			 }
+		 }
+private: System::Void textBox1_TextChanged(System::Object^  sender, System::EventArgs^  e) {
+			 int ix = listBox1->SelectedIndex;
+			 if(ix>=0){
+				config[ix]->path = textBox1->Text;
+				ApplyConfigToView(true);
+			}
+		 }
+private: System::Void buttonRemove_Click(System::Object^  sender, System::EventArgs^  e) {
+			 if(listBox1->SelectedIndex>=0){
+				 config->RemoveAt(listBox1->SelectedIndex);
+				 ApplyConfigToView(false);
+			 }
+		 }
 };
 }
 

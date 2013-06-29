@@ -4,7 +4,7 @@
 #include <OVR.h>
 #include <vcclr.h>
 
-namespace AppSwitcher2 {
+namespace AppSwitcher {
 
 	using namespace System;
 	using namespace System::ComponentModel;
@@ -13,11 +13,11 @@ namespace AppSwitcher2 {
 	using namespace System::Data;
 	using namespace System::Drawing;
 
-	// mostly copied from Deskope https://github.com/AngelJA/Deskope
+	// mostly copied from AppSwitcher https://github.com/AngelJA/AppSwitcher
 	public class RiftWindow
 	{
 	public:
-		RiftWindow(String ^device)
+		RiftWindow(String ^device) : window_app(0)
 		{
 			DEVMODEW devmode;
 			pin_ptr<const wchar_t> wch = PtrToStringChars(device);
@@ -27,21 +27,16 @@ namespace AppSwitcher2 {
 			WNDCLASSW wc = {0};
 			wc.hInstance = GetModuleHandle(NULL);
 			wc.lpfnWndProc = reinterpret_cast<WNDPROC>(WndProc);
-			wc.lpszClassName = L"Deskope Window Class";
+			wc.lpszClassName = L"AppSwitcher Window Class";
 			wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
 			RegisterClassW(&wc);
 			m_hwnd = CreateWindowExW(WS_EX_TOOLWINDOW , // | WS_EX_TRANSPARENT,
-				L"Deskope Window Class",
-				L"Deskope Window",
+				L"AppSwitcher Window Class",
+				L"AppSwitcher Window",
 				WS_POPUP,
-				/*100,100,
-				200,200,
-				*/
 				devmode.dmPosition.x, devmode.dmPosition.y,
 				devmode.dmPelsWidth, devmode.dmPelsHeight,
-				//m_RiftDisplayInfo.dmPosition.x, m_RiftDisplayInfo.dmPosition.y,
-				//m_RiftDisplayInfo.dmPelsWidth, m_RiftDisplayInfo.dmPelsHeight,
 				NULL,
 				NULL,
 				GetModuleHandle(NULL),
@@ -80,6 +75,37 @@ namespace AppSwitcher2 {
 			}
 		}
 
+		void RenderFrame(){
+			int sz = 100;
+			int d = 70;
+
+			PAINTSTRUCT ps;
+			HDC dc_targ = BeginPaint(m_hwnd, &ps);
+
+			
+			if(window_app){
+				POINT pt;
+				pt.x = 0;
+				pt.y = 0;
+				ClientToScreen(window_app, &pt);
+
+				HDC dc_all = GetDC(0);
+				BitBlt(dc_targ, 0, 0, 1280, 800, dc_all, pt.x, pt.y, SRCCOPY);
+				ReleaseDC(0, dc_all);
+			}
+
+
+			RoundRect(dc_targ, 320+d-sz, 250, 320+d+sz, 400, 3, 3);
+			RoundRect(dc_targ, 640+320-d-sz, 250, 640+320-d+sz, 400, 3, 3);
+			
+			TextOutW(dc_targ, 320+d, 300, L"Yunalus", 7);
+			TextOutW(dc_targ, 640+320-d, 300, L"Yunalus", 7);
+
+			TextOutW(dc_targ, 320+d, 300+30, L"Mikulus", 7);
+			TextOutW(dc_targ, 640+320-d, 300+30, L"Mikulus", 7);
+			EndPaint(m_hwnd, &ps);
+		}
+
 		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 		{	
 			switch (message)
@@ -87,27 +113,16 @@ namespace AppSwitcher2 {
 			case WM_DESTROY:
 				PostQuitMessage(0);
 				break;
+			case WM_PAINT:
+				RenderFrame();
+				break;
 			}
 			return DefWindowProc(m_hwnd, message, wParam, lParam);
 		}
 
-
-		UINT_PTR m_uipCaptureTimer; // ID of timer for capturing the screen
-		UINT_PTR m_uipDrawTimer;	// ID of timer for drawing the Scope window
-		UINT_PTR m_uipSendRSDTimer;	// ID of timer for sending Rift sensor data to caller window
 	public:
-		HWND m_hwnd;				// hwnd for Scope window
-		HWND m_hwndCaller;			// hwnd to caller window
-		CURSORINFO m_GlobalCursor;	// mouse cursor info
-		DEVMODE m_RiftDisplayInfo;
-		HDC m_winDC;				// screen DC
-		HDC m_winCopyDC;			// copy of screen for drawing on
-		HBITMAP m_winCopyBM;		// copy of screen for drawing on
-	public: HDC m_hdc;					// Scope window DC
-		HDC m_BackDC;				// back buffer DC
-		HBITMAP m_BackBM;			// back buffer BM
-
-
+		HWND m_hwnd;
+		HWND window_app;
 	};
 }
 
