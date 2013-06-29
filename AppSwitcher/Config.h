@@ -307,7 +307,7 @@ namespace AppSwitcher {
 
 			if(msg.Msg == WM_HOTKEY){
 				if(currentProcess){
-					rw->window_app = 0;
+					rw->window_app = nullptr;
 					currentProcess->Kill();
 					currentProcess = nullptr;
 				}
@@ -361,6 +361,7 @@ namespace AppSwitcher {
 			if(!window || (window == target))
 				throw gcnew Exception(String::Format("Couldn't find launched window for pid={0}.", proc->Id));
 
+			// we launch it anyway if window isn't big (since we don't set window parameters, it's possible)
 			currentProcess = proc;
 			rw->window_app = window;
 		}
