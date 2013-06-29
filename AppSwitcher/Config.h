@@ -30,10 +30,6 @@ namespace AppSwitcher {
 		Config()
 		{
 			InitializeComponent();
-
-			// load model & apply to view
-			config = LoadConfig("config.json");
-			ApplyConfigToView(false);
 			
 			// get rift info
 			OVR::System::Init();
@@ -50,10 +46,11 @@ namespace AppSwitcher {
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 
 			// create rift window
-			rw = new RiftWindow(device);
+			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp));
 
-			// register hotkey
-			RegisterHotKey(static_cast<HWND>(Handle.ToPointer()), 0, MOD_CONTROL | MOD_SHIFT, 'Z');
+			// load model & apply to view
+			config = LoadConfig("config.json");
+			ApplyConfigToView(false);
 		}
 
 	protected:
@@ -108,11 +105,7 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
 	private: Generic::List<AppConfig^>^ config;
-	private: int currentAppIx;
 	private: Process^ currentProcess;
-
-
-
 
 
 
@@ -221,9 +214,9 @@ namespace AppSwitcher {
 			this->label1->AutoSize = true;
 			this->label1->Location = System::Drawing::Point(14, 340);
 			this->label1->Name = L"label1";
-			this->label1->Size = System::Drawing::Size(173, 12);
+			this->label1->Size = System::Drawing::Size(199, 12);
 			this->label1->TabIndex = 12;
-			this->label1->Text = L"Press Ctrl+Shift+Z to switch app";
+			this->label1->Text = L"Press Ctrl+Shift+Z to show/hide HUD";
 			// 
 			// buttonRemove
 			// 
@@ -263,6 +256,7 @@ namespace AppSwitcher {
 		/// Update listBox1 to show current config.
 		/// <param name="preserveIndex">keep current selected index if true. Otherwise it'll be unselected</param>
 		void ApplyConfigToView(bool preserveIndex){
+			// View in Config window
 			int ix = listBox1->SelectedIndex;
 			listBox1->Items->Clear();
 			
@@ -276,6 +270,9 @@ namespace AppSwitcher {
 			else{
 				listBox1->SelectedIndex = -1;
 			}
+
+			// View in HUD window
+			rw->NotifyModelChange(config);
 		}
 
 		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
@@ -300,23 +297,17 @@ namespace AppSwitcher {
 			} // squash error
 		 }
 
+		void SwitchApp(int ix){
+			if(currentProcess){
+				rw->NotifyAppTerminate();
+				currentProcess->Kill();
+				currentProcess = nullptr;
+			}
+
+			LaunchUnityRiftApplication(config[ix]->path);
+		}
 		
 		protected:
-		virtual System::Void WndProc(Message% msg) override {
-			Form::WndProc(msg);
-
-			if(msg.Msg == WM_HOTKEY){
-				if(currentProcess){
-					rw->NotifyAppTerminate();
-					currentProcess->Kill();
-					currentProcess = nullptr;
-				}
-
-				LaunchUnityRiftApplication(config[currentAppIx]->path);
-				currentAppIx = (currentAppIx+1)%config->Count;
-			}
-		}
-
 		void LaunchUnityRiftApplication(String^ filepath){
 			const int max_wait_ms = 2500; // maximum duration for trying
 			const int step_wait = 100; // time until retry

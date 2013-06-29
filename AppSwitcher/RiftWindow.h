@@ -1,8 +1,12 @@
 #pragma once
+#include "AppConfig.h"
+#include <gcroot.h>
 #include <Windows.h>
 #include <d2d1.h>
+#include <dwrite.h>
 #include <wincodec.h>
 #include <vector>
+#include <memory>
 #include <OVR.h>
 #include <vcclr.h>
 
@@ -10,9 +14,11 @@ namespace AppSwitcher {
 	using namespace System;
 	using namespace System::ComponentModel;
 	using namespace System::Collections;
+	using namespace System::Collections::Generic;
 	using namespace System::Windows::Forms;
 	using namespace System::Data;
 	using namespace System::Drawing;
+	using namespace Runtime::InteropServices;
 	
 	enum EffectMode{
 		ST_APP,
@@ -21,10 +27,16 @@ namespace AppSwitcher {
 		ST_LEAVING
 	};
 
+	delegate void app_change_request(int);
+
 	/// Stream video to rift by creating large window there.
 	public class RiftWindow {
 	public:
-		RiftWindow(String^ device) : window_app(nullptr), changed(false), mode(ST_HOME), alpha(0) {
+		RiftWindow(String^ device, app_change_request^ req) : window_app(nullptr), changed(false), mode(ST_HOME), alpha(0),
+			hud_visible(true), hud_cursor(0), hud_cursor_running(-1), request_change(req) {
+
+			hud_items = gcnew Generic::List<String^>();
+
 			InitializeWindow(device);
 
 			// InvalidateRect & WindowUpdate just set some internal flags, and actual # of WM_PAINT is lower.
@@ -32,6 +44,8 @@ namespace AppSwitcher {
 			// See http://blogs.msdn.com/b/oldnewthing/archive/2011/12/19/10249000.aspx for detail.
 			SetTimer(handle, 1, 10, nullptr); // 100 fps at most
 			
+			RegisterHotKey(handle, 0, MOD_CONTROL | MOD_SHIFT, 'Z');
+
 			InitializeD2D();
 		}
 	private:
@@ -104,6 +118,16 @@ namespace AppSwitcher {
 			mode = ST_LEAVING;
 		}
 
+		void NotifyModelChange(Generic::List<AppConfig^>^ config){
+			Generic::List<String^>^ items = hud_items;
+
+			items->Clear();
+			for each(AppConfig^ cfg in config){
+				String^ name = cfg->path->Substring(cfg->path->LastIndexOf("\\")+1);
+				items->Add(name);
+			}
+		}
+
 	private:
 		static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
@@ -147,7 +171,7 @@ namespace AppSwitcher {
 		}
 
 		void RenderFrame(){
-			const int sz = 100;
+			
 			const int d = 70;
 
 			// capture portion of screen
@@ -203,15 +227,22 @@ namespace AppSwitcher {
 			}
 
 			// HUD
-			ID2D1SolidColorBrush* brush = nullptr;
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Beige), &brush);
-			renderTarget->DrawRectangle(D2D1::RectF(320+d-sz, 250, 320+d+sz, 400), brush);
-			renderTarget->DrawRectangle(D2D1::RectF(640+320-d-sz, 250, 640+320-d+sz, 400), brush);
-			brush->Release();
-					
+			if(hud_visible){
+				// left eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(320+d, 400));
+				RenderHUDCentered();
+
+				// right eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(640+320-d, 400));
+				RenderHUDCentered();
+
+				// reset
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+			}
+			
 			renderTarget->EndDraw();
 
-			// animate
+			// animate global
 			switch(mode){
 			case ST_HOME:
 				alpha = 0;
@@ -234,6 +265,90 @@ namespace AppSwitcher {
 				}
 				break;
 			}
+
+			// animate HUD
+			bool curr_up = GetAsyncKeyState(VK_UP);
+			if(curr_up && !prev_up)
+				hud_cursor = max(0, hud_cursor-1);
+			prev_up = curr_up;
+
+			bool curr_down = GetAsyncKeyState(VK_DOWN);
+			if(curr_down && !prev_down)
+				hud_cursor = min(static_cast<Generic::List<String^>^>(hud_items)->Count-1, hud_cursor+1);
+			prev_down = curr_down;
+
+			bool curr_enter = GetAsyncKeyState(VK_RETURN);
+			if(curr_enter && !prev_enter){
+				if(hud_cursor_running != hud_cursor){
+					hud_cursor_running = hud_cursor;
+					app_change_request^ req = request_change;
+					req->Invoke(hud_cursor);
+				}
+			}
+			prev_enter = curr_enter;
+		}
+
+		// 
+		void RenderHUDCentered(){
+			Generic::List<String^>^ items = hud_items;
+
+			// draw
+			const float f_width = 250;
+			const float margin = 3;
+			const float height = 30;
+
+			const float margin_text_h = 15;
+			const float margin_text_v = 7;
+
+			const int n = items->Count;
+			const float f_height = (n-1) * margin + n*height;
+
+			// items
+			IDWriteFactory* wfactory;
+			DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(wfactory), reinterpret_cast<IUnknown**>(&wfactory));
+
+			IDWriteTextFormat* tformat;
+			wfactory->CreateTextFormat(L"Meiryo UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+				DWRITE_FONT_STRETCH_CONDENSED, 16, L"", &tformat);
+
+
+			ID2D1SolidColorBrush* brush_base;
+			ID2D1SolidColorBrush* brush_sel;
+			ID2D1SolidColorBrush* brush_fg_base;
+			ID2D1SolidColorBrush* brush_fg_sel;
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97,0.67), &brush_base);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.96,0.64,0.08,0.67), &brush_sel);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1,0.1,0.1), &brush_fg_base);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97), &brush_fg_sel);
+
+			for(int i=0; i<n; i++){
+				float x0 = -f_width/2;
+				float y0 = -f_height/2 + i*(margin+height);
+
+				pin_ptr<const wchar_t> wch = PtrToStringChars(items[i]);
+
+				D2D1_RECT_F rc_box = D2D1::RectF(x0, y0, x0+f_width, y0+height);
+				D2D1_RECT_F rc_text = D2D1::RectF(x0+margin_text_h, y0+margin_text_v, x0+f_width, y0+height-2*margin_text_v);
+
+				if(i!=hud_cursor){
+					renderTarget->FillRectangle(rc_box, brush_base);
+					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_base);
+				}
+				else{
+					renderTarget->FillRectangle(rc_box, brush_sel);
+					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_sel);
+				}
+
+				if(i==hud_cursor_running){
+					renderTarget->FillRectangle(D2D1::RectF(x0+f_width+margin, y0, x0+f_width+margin+10, y0+height), brush_sel);
+				}
+			}
+			brush_base->Release();
+			brush_sel->Release();
+			brush_fg_base->Release();
+			brush_fg_sel->Release();
+			tformat->Release();
+			wfactory->Release();
 		}
 
 		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam){
@@ -248,21 +363,31 @@ namespace AppSwitcher {
 				InvalidateRect(handle, nullptr, FALSE);
 				UpdateWindow(handle);
 				return 0;
+			case WM_HOTKEY:
+				hud_visible = !hud_visible;
+				return 0;
 			}
 			return DefWindowProc(handle, message, wParam, lParam);
 		}
 	
 	private:
 		HWND handle;
-		HWND window_app;
 	private: // D2D things
 		ID2D1Bitmap* bitmap_d2d;
 		ID2D1Factory* direct2DFactory;
 		ID2D1HwndRenderTarget* renderTarget;
-	private:
+	private: // global state (currently there's no muxing)
+		HWND window_app;
 		bool changed;
 		EffectMode mode;
 		float alpha; // 1:app 0:home
+	private: // HUD state
+		bool hud_visible;
+		int hud_cursor;
+		int hud_cursor_running;
+		bool prev_up, prev_down, prev_enter;
+		gcroot<Generic::List<String^>^> hud_items;
+		gcroot<app_change_request^> request_change;
 	};
 }
 
