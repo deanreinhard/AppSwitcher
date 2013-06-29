@@ -34,10 +34,7 @@ namespace AppSwitcher {
 
 			// load model & apply to view
 			config = LoadConfig("config.json");
-			auto ie = config->GetEnumerator();
-			while(ie.MoveNext()){
-				listBox1->Items->Add(ie.Current->path);
-			}
+			ApplyConfigToView(false);
 			
 			// get rift info
 			OVR::System::Init();
@@ -136,6 +133,8 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::ListBox^  listBox1;
 	private: System::Windows::Forms::Button^  button3;
 private: System::Windows::Forms::Label^  label1;
+private: System::Windows::Forms::Button^  buttonRemove;
+
 	protected: 
 
 	private:
@@ -159,6 +158,7 @@ private: System::Windows::Forms::Label^  label1;
 			this->listBox1 = (gcnew System::Windows::Forms::ListBox());
 			this->button3 = (gcnew System::Windows::Forms::Button());
 			this->label1 = (gcnew System::Windows::Forms::Label());
+			this->buttonRemove = (gcnew System::Windows::Forms::Button());
 			this->SuspendLayout();
 			// 
 			// labelRiftInfo
@@ -176,6 +176,7 @@ private: System::Windows::Forms::Label^  label1;
 			this->textBox1->Name = L"textBox1";
 			this->textBox1->Size = System::Drawing::Size(439, 19);
 			this->textBox1->TabIndex = 6;
+			this->textBox1->TextChanged += gcnew System::EventHandler(this, &Config::textBox1_TextChanged);
 			// 
 			// label2
 			// 
@@ -213,6 +214,7 @@ private: System::Windows::Forms::Label^  label1;
 			this->listBox1->Name = L"listBox1";
 			this->listBox1->Size = System::Drawing::Size(520, 172);
 			this->listBox1->TabIndex = 10;
+			this->listBox1->SelectedIndexChanged += gcnew System::EventHandler(this, &Config::listBox1_SelectedIndexChanged);
 			// 
 			// button3
 			// 
@@ -233,11 +235,23 @@ private: System::Windows::Forms::Label^  label1;
 			this->label1->TabIndex = 12;
 			this->label1->Text = L"Press Ctrl+Shift+Z to switch app";
 			// 
+			// buttonRemove
+			// 
+			this->buttonRemove->Enabled = false;
+			this->buttonRemove->Location = System::Drawing::Point(95, 54);
+			this->buttonRemove->Name = L"buttonRemove";
+			this->buttonRemove->Size = System::Drawing::Size(75, 23);
+			this->buttonRemove->TabIndex = 13;
+			this->buttonRemove->Text = L"Remove";
+			this->buttonRemove->UseVisualStyleBackColor = true;
+			this->buttonRemove->Click += gcnew System::EventHandler(this, &Config::buttonRemove_Click);
+			// 
 			// Config
 			// 
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 12);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
 			this->ClientSize = System::Drawing::Size(721, 364);
+			this->Controls->Add(this->buttonRemove);
 			this->Controls->Add(this->label1);
 			this->Controls->Add(this->button3);
 			this->Controls->Add(this->listBox1);
@@ -256,19 +270,37 @@ private: System::Windows::Forms::Label^  label1;
 #pragma endregion
 
 	private:
+		/// Update listBox1 to show current config.
+		/// <param name="preserveIndex">keep current selected index if true. Otherwise it'll be unselected</param>
+		void ApplyConfigToView(bool preserveIndex){
+			int ix = listBox1->SelectedIndex;
+			listBox1->Items->Clear();
+
+			auto ie = config->GetEnumerator();
+			while(ie.MoveNext()){
+				listBox1->Items->Add(ie.Current->path);
+			}
+
+			if(ix>=0 && preserveIndex){
+				listBox1->SelectedIndex = ix;
+			}
+			else{
+				listBox1->SelectedIndex = -1;
+			}
+		}
+
 		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
 			auto dialog = gcnew OpenFileDialog();
 			dialog->Filter = "Executable Files (*.exe)|*.exe";
 			if(dialog->ShowDialog() == Windows::Forms::DialogResult::OK){
 				textBox1->Text = dialog->FileName;
 			}
-
 		}
 
 		System::Void button3_Click(System::Object^  sender, System::EventArgs^  e) {
 			config->Add(gcnew AppConfig(textBox1->Text));
-			listBox1->Items->Add(textBox1->Text);
 			textBox1->Text = "";
+			ApplyConfigToView(true);
 		}
 
 		System::Void Config_FormClosed(System::Object^  sender, System::Windows::Forms::FormClosedEventArgs^  e) {
@@ -415,6 +447,29 @@ private: System::Windows::Forms::Label^  label1;
 			InvalidateRect(rw->m_hwnd, NULL, FALSE);
 			UpdateWindow(rw->m_hwnd);
 		}
+private: System::Void listBox1_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
+			 int ix = listBox1->SelectedIndex;
+			 if(ix>=0){
+				textBox1->Text = config[ix]->path;
+				buttonRemove->Enabled = true;
+			 }
+			 else{
+				 buttonRemove->Enabled = false;
+			 }
+		 }
+private: System::Void textBox1_TextChanged(System::Object^  sender, System::EventArgs^  e) {
+			 int ix = listBox1->SelectedIndex;
+			 if(ix>=0){
+				config[ix]->path = textBox1->Text;
+				ApplyConfigToView(true);
+			}
+		 }
+private: System::Void buttonRemove_Click(System::Object^  sender, System::EventArgs^  e) {
+			 if(listBox1->SelectedIndex>=0){
+				 config->RemoveAt(listBox1->SelectedIndex);
+				 ApplyConfigToView(false);
+			 }
+		 }
 };
 }
 
