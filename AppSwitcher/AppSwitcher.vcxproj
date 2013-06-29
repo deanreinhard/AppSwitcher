@@ -57,7 +57,7 @@
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;libovrd.lib</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;libovrd.lib</AdditionalDependencies>
       <SubSystem>NotSet</SubSystem>
       <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
     </Link>
@@ -70,7 +70,7 @@
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;libovr.lib</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;libovr.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
