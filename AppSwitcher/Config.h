@@ -16,7 +16,6 @@ namespace AppSwitcher {
 	using namespace System::Drawing;
 	using namespace System::Diagnostics;
 	using namespace System::Threading;
-	using namespace System::Timers;
 	using namespace System::Web::Script::Serialization;
 	
 
@@ -45,20 +44,13 @@ namespace AppSwitcher {
 			OVR::HMDInfo info;
 			hmd->GetDeviceInfo(&info);
 			
-			String ^displayDeviceName = gcnew String(info.DisplayDeviceName);
-			String ^device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
+			String^ displayDeviceName = gcnew String(info.DisplayDeviceName);
+			String^ device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
 			labelRiftInfo->Text = String::Format("({0},{1}) {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
-
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
-			
 
-
-			// setup rift video stream
+			// create rift window
 			rw = new RiftWindow(device);
-
-			t = gcnew System::Timers::Timer(30); // 30ms -> 33fps
-			t->Elapsed += gcnew ElapsedEventHandler(this, &Config::CopyFrame);
-			t->Enabled = true;
 
 			// register hotkey
 			RegisterHotKey(static_cast<HWND>(Handle.ToPointer()), 0, MOD_CONTROL | MOD_SHIFT, 'Z');
@@ -111,10 +103,8 @@ namespace AppSwitcher {
 		}
 
 	
-	private: OVR::DeviceManager *device_manager;
-	private: RiftWindow *rw;
-	//private: HWND window_app;
-	private: System::Timers::Timer^ t;
+	private: OVR::DeviceManager* device_manager;
+	private: RiftWindow* rw;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
 	private: Generic::List<AppConfig^>^ config;
@@ -467,10 +457,11 @@ namespace AppSwitcher {
 			return children;
 		}
 		
-		void CopyFrame(Object^ source, ElapsedEventArgs ^e){
+		void RequestRedraw(Object^ source, ElapsedEventArgs ^e){
 			InvalidateRect(rw->m_hwnd, nullptr, FALSE);
 			UpdateWindow(rw->m_hwnd);
 		}
+
 private: System::Void listBox1_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
 			 int ix = listBox1->SelectedIndex;
 			 if(ix>=0){

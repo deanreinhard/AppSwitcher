@@ -43,6 +43,11 @@ namespace AppSwitcher {
 				this);	//pass the window a pointer to this Scope object
 			ShowWindow(m_hwnd, SW_SHOW);
 
+			// InvalidateRect & WindowUpdate just set some internal flags, and actual # of WM_PAINT is lower.
+			// So it's ok to call it more than possible to make it draw as often as possible.
+			// See http://blogs.msdn.com/b/oldnewthing/archive/2011/12/19/10249000.aspx for detail.
+			SetTimer(m_hwnd, 1, 10, nullptr); // 100 fps at most
+
 			// prepare Direct2D
 			direct2DFactory = nullptr;
 			D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory);
@@ -154,16 +159,18 @@ namespace AppSwitcher {
 				brush->Release();
 		}
 
-		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
-		{	
-			switch (message)
-			{	
+		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam){
+			switch (message){
 			case WM_DESTROY:
 				PostQuitMessage(0);
-				break;
+				return 0;
 			case WM_PAINT:
 				RenderFrame();
-				break;
+				return 0;
+			case WM_TIMER:
+				InvalidateRect(m_hwnd, nullptr, FALSE);
+				UpdateWindow(m_hwnd);
+				return 0;
 			}
 			return DefWindowProc(m_hwnd, message, wParam, lParam);
 		}
