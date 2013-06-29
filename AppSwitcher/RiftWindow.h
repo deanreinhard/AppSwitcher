@@ -7,15 +7,14 @@
 #include <vcclr.h>
 
 namespace AppSwitcher {
-
 	using namespace System;
 	using namespace System::ComponentModel;
 	using namespace System::Collections;
 	using namespace System::Windows::Forms;
 	using namespace System::Data;
 	using namespace System::Drawing;
-
-	// mostly copied from AppSwitcher https://github.com/AngelJA/AppSwitcher
+	
+	/// Stream video to rift by creating large window there.
 	public class RiftWindow
 	{
 	public:
@@ -38,9 +37,9 @@ namespace AppSwitcher {
 				WS_POPUP,
 				devmode.dmPosition.x, devmode.dmPosition.y,
 				devmode.dmPelsWidth, devmode.dmPelsHeight,
-				NULL,
-				NULL,
-				GetModuleHandle(NULL),
+				nullptr,
+				nullptr,
+				GetModuleHandle(nullptr),
 				this);	//pass the window a pointer to this Scope object
 			ShowWindow(m_hwnd, SW_SHOW);
 
