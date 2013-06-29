@@ -218,13 +218,19 @@ namespace AppSwitcher {
 			renderTarget->BeginDraw();
 
 			// background
-			renderTarget->DrawBitmap(bitmap_d2d);
-			if(alpha<1){
-				ID2D1SolidColorBrush* brush = nullptr;
+			ID2D1SolidColorBrush* brush;
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0), &brush);
+			renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
+			brush->Release();
+
+			D2D1_RECT_F rc = D2D1::RectF(0, 0, 1280, 800);
+			renderTarget->DrawBitmap(bitmap_d2d, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
+			if(alpha<1){	
 				renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1.0f-alpha), &brush);
 				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
 				brush->Release();
 			}
+			
 
 			// HUD
 			if(hud_visible){
@@ -267,25 +273,27 @@ namespace AppSwitcher {
 			}
 
 			// animate HUD
-			bool curr_up = GetAsyncKeyState(VK_UP);
-			if(curr_up && !prev_up)
-				hud_cursor = max(0, hud_cursor-1);
-			prev_up = curr_up;
+			if(hud_visible){
+				bool curr_up = GetAsyncKeyState(VK_UP);
+				if(curr_up && !prev_up)
+					hud_cursor = max(0, hud_cursor-1);
+				prev_up = curr_up;
 
-			bool curr_down = GetAsyncKeyState(VK_DOWN);
-			if(curr_down && !prev_down)
-				hud_cursor = min(static_cast<Generic::List<String^>^>(hud_items)->Count-1, hud_cursor+1);
-			prev_down = curr_down;
+				bool curr_down = GetAsyncKeyState(VK_DOWN);
+				if(curr_down && !prev_down)
+					hud_cursor = min(static_cast<Generic::List<String^>^>(hud_items)->Count-1, hud_cursor+1);
+				prev_down = curr_down;
 
-			bool curr_enter = GetAsyncKeyState(VK_RETURN);
-			if(curr_enter && !prev_enter){
-				if(hud_cursor_running != hud_cursor){
-					hud_cursor_running = hud_cursor;
-					app_change_request^ req = request_change;
-					req->Invoke(hud_cursor);
+				bool curr_enter = GetAsyncKeyState(VK_RETURN);
+				if(curr_enter && !prev_enter){
+					if(hud_cursor_running != hud_cursor){
+						hud_cursor_running = hud_cursor;
+						app_change_request^ req = request_change;
+						req->Invoke(hud_cursor);
+					}
 				}
+				prev_enter = curr_enter;
 			}
-			prev_enter = curr_enter;
 		}
 
 		// 
