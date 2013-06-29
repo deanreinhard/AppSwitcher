@@ -1,5 +1,6 @@
 #pragma once
 #include "RiftWindow.h"
+#include "AppConfig.h"
 #include <Windows.h>
 #include <vector>
 #include <OVR.h>
@@ -7,6 +8,7 @@
 namespace AppSwitcher {
 
 	using namespace System;
+	using namespace System::IO;
 	using namespace System::ComponentModel;
 	using namespace System::Collections;
 	using namespace System::Windows::Forms;
@@ -15,6 +17,8 @@ namespace AppSwitcher {
 	using namespace System::Diagnostics;
 	using namespace System::Threading;
 	using namespace System::Timers;
+	using namespace System::Web::Script::Serialization;
+	
 
 	bool CALLBACK list_proc(HWND hwnd, LPARAM param);
 
@@ -27,6 +31,13 @@ namespace AppSwitcher {
 		Config()
 		{
 			InitializeComponent();
+
+			// load model & apply to view
+			config = LoadConfig("config.json");
+			auto ie = config->GetEnumerator();
+			while(ie.MoveNext()){
+				listBox1->Items->Add(ie.Current->path);
+			}
 			
 			// get rift info
 			OVR::System::Init();
@@ -57,6 +68,40 @@ namespace AppSwitcher {
 		}
 
 	protected:
+		// Load config from specified path. Return default one if failed to open / invalid config etc. occurs.
+		Generic::List<AppConfig^>^ LoadConfig(String^ path){
+			auto ls = gcnew Generic::List<AppConfig^>();
+
+			try{
+				
+				auto file = File::OpenText(path);
+				String^ json = file->ReadToEnd();
+				file->Close();
+
+				auto ser = gcnew JavaScriptSerializer();
+				auto ls_path = ser->Deserialize<Generic::List<AppConfig^>^>(json);
+				if(ls_path == nullptr){
+					return ls;
+				}
+
+				return ls_path;
+			}
+			catch(FileNotFoundException^ e){
+			}
+
+			return ls;
+		}
+
+		void SaveConfig(String^ path, Generic::List<AppConfig^>^ config){
+			auto ser = gcnew JavaScriptSerializer();
+			auto json = ser->Serialize(config);
+			auto file = File::CreateText(path);
+			file->Write(json);
+			file->Flush();
+			file->Close();
+		}
+
+	protected:
 		/// <summary>
 		/// 使用中のリソースをすべてクリーンアップします。
 		/// </summary>
@@ -67,18 +112,21 @@ namespace AppSwitcher {
 				delete components;
 			}
 		}
+
+	
 	private: OVR::DeviceManager *device_manager;
 	private: RiftWindow *rw;
 	//private: HWND window_app;
 	private: System::Timers::Timer^ t;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
 
+	private: Generic::List<AppConfig^>^ config;
 	private: int currentAppIx;
 	private: Process^ currentProcess;
 
 
 
-	private: System::Windows::Forms::Button^  button2;
+
 
 
 	private: System::Windows::Forms::TextBox^  textBox1;
@@ -87,6 +135,7 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::Button^  button1;
 	private: System::Windows::Forms::ListBox^  listBox1;
 	private: System::Windows::Forms::Button^  button3;
+private: System::Windows::Forms::Label^  label1;
 	protected: 
 
 	private:
@@ -103,13 +152,13 @@ namespace AppSwitcher {
 		void InitializeComponent(void)
 		{
 			this->labelRiftInfo = (gcnew System::Windows::Forms::Label());
-			this->button2 = (gcnew System::Windows::Forms::Button());
 			this->textBox1 = (gcnew System::Windows::Forms::TextBox());
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->label3 = (gcnew System::Windows::Forms::Label());
 			this->button1 = (gcnew System::Windows::Forms::Button());
 			this->listBox1 = (gcnew System::Windows::Forms::ListBox());
 			this->button3 = (gcnew System::Windows::Forms::Button());
+			this->label1 = (gcnew System::Windows::Forms::Label());
 			this->SuspendLayout();
 			// 
 			// labelRiftInfo
@@ -121,23 +170,12 @@ namespace AppSwitcher {
 			this->labelRiftInfo->TabIndex = 2;
 			this->labelRiftInfo->Text = L"label1";
 			// 
-			// button2
-			// 
-			this->button2->Location = System::Drawing::Point(14, 319);
-			this->button2->Name = L"button2";
-			this->button2->Size = System::Drawing::Size(75, 23);
-			this->button2->TabIndex = 3;
-			this->button2->Text = L"Launch";
-			this->button2->UseVisualStyleBackColor = true;
-			this->button2->Click += gcnew System::EventHandler(this, &Config::button2_Click);
-			// 
 			// textBox1
 			// 
 			this->textBox1->Location = System::Drawing::Point(14, 33);
 			this->textBox1->Name = L"textBox1";
 			this->textBox1->Size = System::Drawing::Size(439, 19);
 			this->textBox1->TabIndex = 6;
-			this->textBox1->Text = L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Yunalus\\Yunalus.exe";
 			// 
 			// label2
 			// 
@@ -171,8 +209,6 @@ namespace AppSwitcher {
 			// 
 			this->listBox1->FormattingEnabled = true;
 			this->listBox1->ItemHeight = 12;
-			this->listBox1->Items->AddRange(gcnew cli::array< System::Object^  >(2) {L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Yunalus\\Yunalus.exe", 
-				L"C:\\Users\\xyx\\Desktop\\Oculus Demos\\Mikulus\\Mikulus.exe"});
 			this->listBox1->Location = System::Drawing::Point(14, 83);
 			this->listBox1->Name = L"listBox1";
 			this->listBox1->Size = System::Drawing::Size(520, 172);
@@ -188,21 +224,31 @@ namespace AppSwitcher {
 			this->button3->UseVisualStyleBackColor = true;
 			this->button3->Click += gcnew System::EventHandler(this, &Config::button3_Click);
 			// 
+			// label1
+			// 
+			this->label1->AutoSize = true;
+			this->label1->Location = System::Drawing::Point(14, 340);
+			this->label1->Name = L"label1";
+			this->label1->Size = System::Drawing::Size(173, 12);
+			this->label1->TabIndex = 12;
+			this->label1->Text = L"Press Ctrl+Shift+Z to switch app";
+			// 
 			// Config
 			// 
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 12);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
 			this->ClientSize = System::Drawing::Size(721, 364);
+			this->Controls->Add(this->label1);
 			this->Controls->Add(this->button3);
 			this->Controls->Add(this->listBox1);
 			this->Controls->Add(this->button1);
 			this->Controls->Add(this->label3);
 			this->Controls->Add(this->label2);
 			this->Controls->Add(this->textBox1);
-			this->Controls->Add(this->button2);
 			this->Controls->Add(this->labelRiftInfo);
 			this->Name = L"Config";
 			this->Text = L"AppSwitcher";
+			this->FormClosed += gcnew System::Windows::Forms::FormClosedEventHandler(this, &Config::Config_FormClosed);
 			this->ResumeLayout(false);
 			this->PerformLayout();
 
@@ -210,10 +256,6 @@ namespace AppSwitcher {
 #pragma endregion
 
 	private:
-		System::Void button2_Click(System::Object^  sender, System::EventArgs^  e) {
-			LaunchUnityRiftApplication(textBox1->Text);
-		}
-
 		System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
 			auto dialog = gcnew OpenFileDialog();
 			dialog->Filter = "Executable Files (*.exe)|*.exe";
@@ -224,9 +266,18 @@ namespace AppSwitcher {
 		}
 
 		System::Void button3_Click(System::Object^  sender, System::EventArgs^  e) {
+			config->Add(gcnew AppConfig(textBox1->Text));
 			listBox1->Items->Add(textBox1->Text);
 			textBox1->Text = "";
 		}
+
+		System::Void Config_FormClosed(System::Object^  sender, System::Windows::Forms::FormClosedEventArgs^  e) {
+			try{
+				SaveConfig("config.json", config);
+			}
+			catch(Exception^ e){
+			} // squash error
+		 }
 
 		
 		protected:
@@ -240,8 +291,8 @@ namespace AppSwitcher {
 					currentProcess = nullptr;
 				}
 
-				LaunchUnityRiftApplication(listBox1->Items[currentAppIx]->ToString());
-				currentAppIx = (currentAppIx+1)%listBox1->Items->Count;
+				LaunchUnityRiftApplication(config[currentAppIx]->path);
+				currentAppIx = (currentAppIx+1)%config->Count;
 			}
 		}
 
@@ -364,7 +415,6 @@ namespace AppSwitcher {
 			InvalidateRect(rw->m_hwnd, NULL, FALSE);
 			UpdateWindow(rw->m_hwnd);
 		}
-	private:
 };
 }
 
