@@ -46,7 +46,7 @@ namespace AppSwitcher {
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 
 			// create rift window
-			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp));
+			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp), gcnew app_running_request(this, &Config::CheckApp));
 
 			// load model & apply to view
 			config = LoadConfig("config.json");
@@ -297,6 +297,7 @@ namespace AppSwitcher {
 			} // squash error
 		 }
 
+		// ix=-1: change to desktop ix>=0:change to specified app id
 		void SwitchApp(int ix){
 			if(currentProcess){
 				rw->NotifyAppTerminate();
@@ -304,7 +305,15 @@ namespace AppSwitcher {
 				currentProcess = nullptr;
 			}
 
-			LaunchUnityRiftApplication(config[ix]->path);
+			if(ix>=0)
+				LaunchUnityRiftApplication(config[ix]->path);
+		}
+
+		// return true if app is really running
+		bool CheckApp(){
+			if(!currentProcess)
+				return false;
+			return !(currentProcess->WaitForExit(0));
 		}
 		
 		protected:
