@@ -133,11 +133,9 @@ namespace AppSwitcher {
 		}
 
 	private:
-		static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-		{
-			RiftWindow * pThis = NULL;
-			if (message == WM_CREATE)
-			{
+		static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam){
+			RiftWindow* pThis = nullptr;
+			if(message == WM_CREATE){
 				CREATESTRUCT* pCreate = (CREATESTRUCT*)lParam;
 				pThis = reinterpret_cast<RiftWindow*>(pCreate->lpCreateParams);
 				SetWindowLongW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG>(pThis));
@@ -145,28 +143,22 @@ namespace AppSwitcher {
 				pThis->handle = hwnd;
 			}
 			else
-			{
 				pThis = reinterpret_cast<RiftWindow*>(GetWindowLongW(hwnd, GWLP_USERDATA));
-			}
 
-			if (pThis)
-			{
+			if(pThis)
 				return pThis->HandleMessage(message, wParam, lParam);
-			}
-			else
-			{
+			else 
 				return DefWindowProcW(hwnd, message, wParam, lParam);
-			}
 		}
 
-		HBITMAP CaptureScreen(int x0, int y0){
+		HBITMAP CaptureScreen(const int x0, const int y0, const int w=1280, const int h=800){
 			HDC dc_screen = GetDC(0);
 			HDC dc_bitmap = CreateCompatibleDC(dc_screen);
 
-			HBITMAP bitmap = CreateCompatibleBitmap(dc_screen, 1280, 800);
+			HBITMAP bitmap = CreateCompatibleBitmap(dc_screen, w, h);
 			SelectObject(dc_bitmap, bitmap);
 
-			BitBlt(dc_bitmap, 0, 0, 1280, 800, dc_screen, x0, y0, SRCCOPY);
+			BitBlt(dc_bitmap, 0, 0, w, h, dc_screen, x0, y0, SRCCOPY);
 
 			ReleaseDC(0, dc_screen);
 			DeleteDC(dc_bitmap);
@@ -175,8 +167,38 @@ namespace AppSwitcher {
 		}
 
 		void RenderFrame(){
+			renderTarget->BeginDraw();
+			if(true){
+				RenderBaseEnv_Id();
+			}
+			else{
+				RenderBaseEnv_Desktop();
+			}
+			RenderHUD();
+			renderTarget->EndDraw();
+
+			AnimateBaseEnv();
+			AnimateHUD();
+		}
+
+		void RenderHUD(){
 			const int d = 70;
 
+			if(hud_visible){
+				// left eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(320+d, 400));
+				RenderHUDCentered();
+
+				// right eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(640+320-d, 400));
+				RenderHUDCentered();
+
+				// reset
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+			}
+		}
+
+		void RenderBaseEnv_Id(){
 			// capture portion of screen
 			if(window_app){
 				POINT pt;
@@ -219,15 +241,13 @@ namespace AppSwitcher {
 				DeleteObject(bitmap);
 			}
 
-			// render
-			renderTarget->BeginDraw();
-
 			// background
 			ID2D1SolidColorBrush* brush;
 			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0), &brush);
 			renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
 			brush->Release();
 
+			// faded content
 			D2D1_RECT_F rc = D2D1::RectF(0, 0, 1280, 800);
 			renderTarget->DrawBitmap(bitmap_d2d, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
 			if(alpha<1){	
@@ -235,25 +255,26 @@ namespace AppSwitcher {
 				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
 				brush->Release();
 			}
-			
+		}
 
-			// HUD
-			if(hud_visible){
-				// left eye
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(320+d, 400));
-				RenderHUDCentered();
+		void RenderBaseEnv_Desktop(){
+			// background
+			ID2D1SolidColorBrush* brush;
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0), &brush);
+			renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
+			brush->Release();
 
-				// right eye
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(640+320-d, 400));
-				RenderHUDCentered();
-
-				// reset
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+			// faded content
+			D2D1_RECT_F rc = D2D1::RectF(0, 0, 1280, 800);
+			renderTarget->DrawBitmap(bitmap_d2d, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
+			if(alpha<1){	
+				renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1.0f-alpha), &brush);
+				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
+				brush->Release();
 			}
-			
-			renderTarget->EndDraw();
+		}
 
-			// animate global
+		void AnimateBaseEnv(){
 			switch(mode){
 			case ST_HOME:
 				alpha = 0;
@@ -276,8 +297,9 @@ namespace AppSwitcher {
 				}
 				break;
 			}
+		}
 
-			// animate HUD
+		void AnimateHUD(){
 			if(hud_visible){
 				bool curr_up = GetAsyncKeyState(VK_UP);
 				if(curr_up && !prev_up)
