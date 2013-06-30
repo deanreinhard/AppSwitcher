@@ -34,9 +34,10 @@ namespace AppSwitcher {
 	/// Stream video to rift by creating large window there.
 	public class RiftWindow {
 	public:
-		RiftWindow(String^ device, app_change_request^ req, app_running_request^ req_run) :
+		RiftWindow(String^ device, app_change_request^ req, app_running_request^ req_run, float* r_desktop_zoom, float* r_desktop_ipd) :
 			window_app(nullptr), changed(true), mode(ST_ENTERING), alpha(0),
 			hud_visible(true), hud_cursor(0), baseenv_is_id(false),
+			desktop_zoom(r_desktop_zoom), desktop_ipd(r_desktop_ipd),
 			request_change(req), request_running(req_run) {
 
 			hud_items = gcnew Generic::List<String^>();
@@ -285,11 +286,12 @@ namespace AppSwitcher {
 
 		void RenderBaseEnv_Desktop(){
 			// capture portion of screen
+			const int sz = min(2000, (800 / *desktop_zoom));
 			POINT cursorpos;
 			GetCursorPos(&cursorpos);
 			zoom_cx = cursorpos.x;
 			zoom_cy = cursorpos.y;
-			HBITMAP bitmap = CaptureScreen(zoom_cx-400, zoom_cy-400, 800, 800);
+			HBITMAP bitmap = CaptureScreen(zoom_cx-sz/2, zoom_cy-sz/2, sz, sz);
 
 			// convert to D2D bitmap
 			IWICImagingFactory* iFactory = nullptr;
@@ -299,7 +301,10 @@ namespace AppSwitcher {
 			IWICBitmap* bitmap_iwic = nullptr;
 			if(FAILED(iFactory->CreateBitmapFromHBITMAP(bitmap, NULL, WICBitmapAlphaChannelOption::WICBitmapIgnoreAlpha, &bitmap_iwic)))
 				throw gcnew Exception("Failed to create WIC bitmap");
-				
+			
+			ID2D1Bitmap* bitmap_d2d;
+			renderTarget->CreateBitmapFromWicBitmap(bitmap_iwic, &bitmap_d2d);
+			/*
 			WICRect rc = {0, 0, 800, 800};
 			IWICBitmapLock* lock = nullptr;
 			bitmap_iwic->Lock(&rc, WICBitmapLockRead, &lock);
@@ -316,6 +321,7 @@ namespace AppSwitcher {
 				}
 				lock->Release();
 			}
+			*/
 
 			bitmap_iwic->Release();
 			iFactory->Release();
@@ -328,21 +334,21 @@ namespace AppSwitcher {
 			brush->Release();
 
 			// for each eye
-			const float delta = 50;
+			const float delta = *desktop_ipd;
 			const float half_size_dst = 400;
 			const float cx_L = 320+delta;
 			const float cx_R = 640+320-delta;
-			const float cy = 400;
-			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, 800, 800);
+			const float cy = 800/2;
+			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, sz, sz);
 			D2D1_RECT_F rc_d2d_dest_L = D2D1::RectF(cx_L-half_size_dst, cy-half_size_dst, cx_L+half_size_dst, cy+half_size_dst);
 			D2D1_RECT_F rc_d2d_dest_R = D2D1::RectF(cx_R-half_size_dst, cy-half_size_dst, cx_R+half_size_dst, cy+half_size_dst);
 
 			renderTarget->PushAxisAlignedClip(D2D1::RectF(0,0,640,800), D2D1_ANTIALIAS_MODE_ALIASED);
-			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_L, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+			renderTarget->DrawBitmap(bitmap_d2d, &rc_d2d_dest_L, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
 			renderTarget->PopAxisAlignedClip();
 
 			renderTarget->PushAxisAlignedClip(D2D1::RectF(640,0,1280,800), D2D1_ANTIALIAS_MODE_ALIASED);
-			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_R, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+			renderTarget->DrawBitmap(bitmap_d2d, &rc_d2d_dest_R, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
 			renderTarget->PopAxisAlignedClip();
 
 			// cursor must be overlaid here because it's not in screen capture
@@ -367,6 +373,8 @@ namespace AppSwitcher {
 				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
 				brush->Release();
 			}
+
+			bitmap_d2d->Release();
 		}
 
 		void AnimateBaseEnv(){
@@ -525,6 +533,8 @@ namespace AppSwitcher {
 		ID2D1Bitmap* bitmap_d2d_id; // 1280x800
 		int ix_app_running;
 	private: // BaseEnv-Desktop
+		float* desktop_ipd;
+		float* desktop_zoom;
 		int zoom_cx, zoom_cy;
 		ID2D1Bitmap* bitmap_d2d_desktop; // 800x800
 	private: // HUD state: 0=desktop 1-n:apps, so cursor=ix_app_running+1 when baseenv_is_id

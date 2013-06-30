@@ -27,8 +27,7 @@ namespace AppSwitcher {
 	public ref class Config : public System::Windows::Forms::Form
 	{
 	public:
-		Config()
-		{
+		Config() {
 			InitializeComponent();
 			
 			// get rift info
@@ -46,7 +45,12 @@ namespace AppSwitcher {
 			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 
 			// create rift window
-			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp), gcnew app_running_request(this, &Config::CheckApp));
+			desktop_zoom = new float;
+			desktop_ipd = new float;
+			*desktop_zoom = 1;
+			*desktop_ipd = 70;
+			rw = new RiftWindow(device, gcnew app_change_request(this, &Config::SwitchApp), gcnew app_running_request(this, &Config::CheckApp),
+				desktop_zoom, desktop_ipd);
 
 			// load model & apply to view
 			config = LoadConfig("config.json");
@@ -100,6 +104,9 @@ namespace AppSwitcher {
 		}
 
 	
+	private: float* desktop_ipd;
+	private: float* desktop_zoom;
+
 	private: OVR::DeviceManager* device_manager;
 	private: RiftWindow* rw;
 	private: System::Windows::Forms::Label^  labelRiftInfo;
@@ -117,6 +124,12 @@ namespace AppSwitcher {
 	private: System::Windows::Forms::Button^  button3;
 	private: System::Windows::Forms::Label^  label1;
 	private: System::Windows::Forms::Button^  buttonRemove;
+	private: System::Windows::Forms::TrackBar^  trackBarIPD;
+	private: System::Windows::Forms::TrackBar^  trackBarZoom;
+	private: System::Windows::Forms::Label^  label4;
+	private: System::Windows::Forms::Label^  label5;
+	private: System::Windows::Forms::Label^  labelIPD;
+	private: System::Windows::Forms::Label^  labelZoom;
 
 	protected: 
 
@@ -142,6 +155,14 @@ namespace AppSwitcher {
 			this->button3 = (gcnew System::Windows::Forms::Button());
 			this->label1 = (gcnew System::Windows::Forms::Label());
 			this->buttonRemove = (gcnew System::Windows::Forms::Button());
+			this->trackBarIPD = (gcnew System::Windows::Forms::TrackBar());
+			this->trackBarZoom = (gcnew System::Windows::Forms::TrackBar());
+			this->label4 = (gcnew System::Windows::Forms::Label());
+			this->label5 = (gcnew System::Windows::Forms::Label());
+			this->labelIPD = (gcnew System::Windows::Forms::Label());
+			this->labelZoom = (gcnew System::Windows::Forms::Label());
+			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarIPD))->BeginInit();
+			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarZoom))->BeginInit();
 			this->SuspendLayout();
 			// 
 			// labelRiftInfo
@@ -212,9 +233,11 @@ namespace AppSwitcher {
 			// label1
 			// 
 			this->label1->AutoSize = true;
-			this->label1->Location = System::Drawing::Point(14, 340);
+			this->label1->Font = (gcnew System::Drawing::Font(L"MS UI Gothic", 9, System::Drawing::FontStyle::Bold, System::Drawing::GraphicsUnit::Point, 
+				static_cast<System::Byte>(128)));
+			this->label1->Location = System::Drawing::Point(12, 289);
 			this->label1->Name = L"label1";
-			this->label1->Size = System::Drawing::Size(199, 12);
+			this->label1->Size = System::Drawing::Size(234, 12);
 			this->label1->TabIndex = 12;
 			this->label1->Text = L"Press Ctrl+Shift+Z to show/hide HUD";
 			// 
@@ -229,11 +252,81 @@ namespace AppSwitcher {
 			this->buttonRemove->UseVisualStyleBackColor = true;
 			this->buttonRemove->Click += gcnew System::EventHandler(this, &Config::buttonRemove_Click);
 			// 
+			// trackBarIPD
+			// 
+			this->trackBarIPD->LargeChange = 10;
+			this->trackBarIPD->Location = System::Drawing::Point(43, 314);
+			this->trackBarIPD->Maximum = 130;
+			this->trackBarIPD->Minimum = 30;
+			this->trackBarIPD->Name = L"trackBarIPD";
+			this->trackBarIPD->Size = System::Drawing::Size(287, 45);
+			this->trackBarIPD->SmallChange = 5;
+			this->trackBarIPD->TabIndex = 14;
+			this->trackBarIPD->TickFrequency = 5;
+			this->trackBarIPD->Value = 70;
+			this->trackBarIPD->ValueChanged += gcnew System::EventHandler(this, &Config::trackBarIPD_ValueChanged);
+			// 
+			// trackBarZoom
+			// 
+			this->trackBarZoom->LargeChange = 200;
+			this->trackBarZoom->Location = System::Drawing::Point(43, 356);
+			this->trackBarZoom->Maximum = 1200;
+			this->trackBarZoom->Minimum = 300;
+			this->trackBarZoom->Name = L"trackBarZoom";
+			this->trackBarZoom->Size = System::Drawing::Size(287, 45);
+			this->trackBarZoom->SmallChange = 100;
+			this->trackBarZoom->TabIndex = 15;
+			this->trackBarZoom->TickFrequency = 100;
+			this->trackBarZoom->Value = 1000;
+			this->trackBarZoom->ValueChanged += gcnew System::EventHandler(this, &Config::trackBarZoom_ValueChanged);
+			// 
+			// label4
+			// 
+			this->label4->AutoSize = true;
+			this->label4->Location = System::Drawing::Point(12, 315);
+			this->label4->Name = L"label4";
+			this->label4->Size = System::Drawing::Size(23, 12);
+			this->label4->TabIndex = 16;
+			this->label4->Text = L"IPD";
+			// 
+			// label5
+			// 
+			this->label5->AutoSize = true;
+			this->label5->Location = System::Drawing::Point(12, 356);
+			this->label5->Name = L"label5";
+			this->label5->Size = System::Drawing::Size(33, 12);
+			this->label5->TabIndex = 17;
+			this->label5->Text = L"Zoom";
+			// 
+			// labelIPD
+			// 
+			this->labelIPD->AutoSize = true;
+			this->labelIPD->Location = System::Drawing::Point(327, 315);
+			this->labelIPD->Name = L"labelIPD";
+			this->labelIPD->Size = System::Drawing::Size(33, 12);
+			this->labelIPD->TabIndex = 18;
+			this->labelIPD->Text = L"70 px";
+			// 
+			// labelZoom
+			// 
+			this->labelZoom->AutoSize = true;
+			this->labelZoom->Location = System::Drawing::Point(327, 356);
+			this->labelZoom->Name = L"labelZoom";
+			this->labelZoom->Size = System::Drawing::Size(31, 12);
+			this->labelZoom->TabIndex = 19;
+			this->labelZoom->Text = L"x1.00";
+			// 
 			// Config
 			// 
 			this->AutoScaleDimensions = System::Drawing::SizeF(6, 12);
 			this->AutoScaleMode = System::Windows::Forms::AutoScaleMode::Font;
-			this->ClientSize = System::Drawing::Size(721, 364);
+			this->ClientSize = System::Drawing::Size(548, 394);
+			this->Controls->Add(this->labelZoom);
+			this->Controls->Add(this->labelIPD);
+			this->Controls->Add(this->label5);
+			this->Controls->Add(this->label4);
+			this->Controls->Add(this->trackBarZoom);
+			this->Controls->Add(this->trackBarIPD);
 			this->Controls->Add(this->buttonRemove);
 			this->Controls->Add(this->label1);
 			this->Controls->Add(this->button3);
@@ -246,6 +339,8 @@ namespace AppSwitcher {
 			this->Name = L"Config";
 			this->Text = L"AppSwitcher";
 			this->FormClosed += gcnew System::Windows::Forms::FormClosedEventHandler(this, &Config::Config_FormClosed);
+			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarIPD))->EndInit();
+			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarZoom))->EndInit();
 			this->ResumeLayout(false);
 			this->PerformLayout();
 
@@ -531,6 +626,15 @@ private: System::Void buttonRemove_Click(System::Object^  sender, System::EventA
 				 config->RemoveAt(listBox1->SelectedIndex);
 				 ApplyConfigToView(false);
 			 }
+		 }
+
+private: System::Void trackBarIPD_ValueChanged(System::Object^  sender, System::EventArgs^  e) {
+			 *desktop_ipd = trackBarIPD->Value;
+			labelIPD->Text = String::Format("{0} px", *desktop_ipd);
+		 }
+private: System::Void trackBarZoom_ValueChanged(System::Object^  sender, System::EventArgs^  e) {
+			 *desktop_zoom = trackBarZoom->Value*1e-3f;
+			 labelZoom->Text = String::Format("x{0:F2}", *desktop_zoom);
 		 }
 };
 }
