@@ -336,7 +336,10 @@ namespace AppSwitcher {
 			this->Controls->Add(this->label2);
 			this->Controls->Add(this->textBox1);
 			this->Controls->Add(this->labelRiftInfo);
+			this->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedSingle;
+			this->MaximizeBox = false;
 			this->Name = L"Config";
+			this->SizeGripStyle = System::Windows::Forms::SizeGripStyle::Hide;
 			this->Text = L"AppSwitcher";
 			this->FormClosed += gcnew System::Windows::Forms::FormClosedEventHandler(this, &Config::Config_FormClosed);
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarIPD))->EndInit();

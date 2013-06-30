@@ -418,6 +418,8 @@ namespace AppSwitcher {
 							static_cast<app_change_request^>(request_change)->Invoke(ix_app_running);
 						}
 					}
+					else
+						mode = ST_APP;
 				}
 				prev_enter = curr_enter;
 			}
