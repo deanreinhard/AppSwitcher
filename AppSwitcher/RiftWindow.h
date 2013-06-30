@@ -29,12 +29,15 @@ namespace AppSwitcher {
 	};
 
 	delegate void app_change_request(int);
+	delegate bool app_running_request();
 
 	/// Stream video to rift by creating large window there.
 	public class RiftWindow {
 	public:
-		RiftWindow(String^ device, app_change_request^ req) : window_app(nullptr), changed(true), mode(ST_ENTERING), alpha(0),
-			hud_visible(true), hud_cursor(0), baseenv_is_id(false), request_change(req) {
+		RiftWindow(String^ device, app_change_request^ req, app_running_request^ req_run) :
+			window_app(nullptr), changed(true), mode(ST_ENTERING), alpha(0),
+			hud_visible(true), hud_cursor(0), baseenv_is_id(false),
+			request_change(req), request_running(req_run) {
 
 			hud_items = gcnew Generic::List<String^>();
 
@@ -193,6 +196,15 @@ namespace AppSwitcher {
 
 			AnimateBaseEnv();
 			AnimateHUD();
+			bool is_app_invalid = false;
+			if(baseenv_is_id){ // only check when app is supposed to be running
+				is_app_invalid = !static_cast<app_running_request^>(request_running)->Invoke();
+			}
+			if(is_app_invalid){
+				baseenv_is_id = false;
+				changed = true; // this is needed because Config doesn't call NotifyAppChange for BaseEnv-Desktop
+				static_cast<app_change_request^>(request_change)->Invoke(-1);
+			}
 		}
 
 		void RenderHUD(){
@@ -521,6 +533,7 @@ namespace AppSwitcher {
 		bool prev_up, prev_down, prev_enter;
 		gcroot<Generic::List<String^>^> hud_items;
 		gcroot<app_change_request^> request_change;
+		gcroot<app_running_request^> request_running;
 	};
 }
 
