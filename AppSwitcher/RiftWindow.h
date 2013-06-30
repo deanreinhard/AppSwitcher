@@ -1,6 +1,7 @@
 #pragma once
 #include "AppConfig.h"
 #include <gcroot.h>
+#include <comdef.h>
 #include <Windows.h>
 #include <d2d1.h>
 #include <dwrite.h>
@@ -78,14 +79,17 @@ namespace AppSwitcher {
 		// requires handle to be set
 		void InitializeD2D(){
 			direct2DFactory = nullptr;
-			D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory);
+			if(!FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory)))
+				throw gcnew Exception("Failed to create Direct2D factory");
+			
 			RECT rect;
 			GetClientRect(handle, &rect);
 
 			renderTarget = nullptr;
-			direct2DFactory->CreateHwndRenderTarget(D2D1::RenderTargetProperties(),
+			if(FAILED(direct2DFactory->CreateHwndRenderTarget(D2D1::RenderTargetProperties(),
 				D2D1::HwndRenderTargetProperties(handle, D2D1::SizeU(rect.right-rect.left, rect.bottom-rect.top)),
-				&renderTarget);
+				&renderTarget)))
+				throw gcnew Exception("Failed to create Direct2D render target");
 
 			// create bitmap
 			bitmap_d2d = nullptr;
@@ -171,7 +175,6 @@ namespace AppSwitcher {
 		}
 
 		void RenderFrame(){
-			
 			const int d = 70;
 
 			// capture portion of screen
@@ -185,10 +188,12 @@ namespace AppSwitcher {
 
 				// convert to D2D bitmap
 				IWICImagingFactory* iFactory = nullptr;
-				CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, reinterpret_cast<LPVOID*>(&iFactory));
+				if(FAILED(CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, reinterpret_cast<LPVOID*>(&iFactory))))
+					throw gcnew Exception("Failed to create WIC Imaginc factory");
 
 				IWICBitmap* bitmap_iwic = nullptr;
-				iFactory->CreateBitmapFromHBITMAP(bitmap, NULL, WICBitmapAlphaChannelOption::WICBitmapIgnoreAlpha, &bitmap_iwic);
+				if(FAILED(iFactory->CreateBitmapFromHBITMAP(bitmap, NULL, WICBitmapAlphaChannelOption::WICBitmapIgnoreAlpha, &bitmap_iwic)))
+					throw gcnew Exception("Failed to create WIC bitmap");
 				
 				WICRect rc = {0, 0, 1280, 800};
 				IWICBitmapLock* lock = nullptr;
