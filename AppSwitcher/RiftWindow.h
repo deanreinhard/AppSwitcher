@@ -273,9 +273,11 @@ namespace AppSwitcher {
 
 		void RenderBaseEnv_Desktop(){
 			// capture portion of screen
-			zoom_cx = 300;
-			zoom_cy = 300;
-			HBITMAP bitmap = CaptureScreen(zoom_cx, zoom_cy, 800, 800);
+			POINT cursorpos;
+			GetCursorPos(&cursorpos);
+			zoom_cx = cursorpos.x;
+			zoom_cy = cursorpos.y;
+			HBITMAP bitmap = CaptureScreen(zoom_cx-400, zoom_cy-400, 800, 800);
 
 			// convert to D2D bitmap
 			IWICImagingFactory* iFactory = nullptr;
@@ -316,14 +318,36 @@ namespace AppSwitcher {
 			// for each eye
 			const float delta = 50;
 			const float half_size_dst = 400;
+			const float cx_L = 320+delta;
+			const float cx_R = 640+320-delta;
+			const float cy = 400;
 			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, 800, 800);
-			D2D1_RECT_F rc_d2d_dest_L = D2D1::RectF(320+delta-half_size_dst, 400-half_size_dst, 320+delta+half_size_dst, 400+half_size_dst);
-			D2D1_RECT_F rc_d2d_dest_R = D2D1::RectF(640+320-delta-half_size_dst, 400-half_size_dst, 640-delta+320+half_size_dst, 400+half_size_dst);
+			D2D1_RECT_F rc_d2d_dest_L = D2D1::RectF(cx_L-half_size_dst, cy-half_size_dst, cx_L+half_size_dst, cy+half_size_dst);
+			D2D1_RECT_F rc_d2d_dest_R = D2D1::RectF(cx_R-half_size_dst, cy-half_size_dst, cx_R+half_size_dst, cy+half_size_dst);
+
+			renderTarget->PushAxisAlignedClip(D2D1::RectF(0,0,640,800), D2D1_ANTIALIAS_MODE_ALIASED);
 			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_L, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+			renderTarget->PopAxisAlignedClip();
+
+			renderTarget->PushAxisAlignedClip(D2D1::RectF(640,0,1280,800), D2D1_ANTIALIAS_MODE_ALIASED);
 			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_R, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+			renderTarget->PopAxisAlignedClip();
 
 			// cursor must be overlaid here because it's not in screen capture
-
+			/* TODO: draw real cursor
+			POINT cursorpos;
+			CURSORINFO cursorinfo;
+			GetCursorPos(&cursorpos);
+			GetCursorInfo(&cursorinfo);
+			if(cursorinfo.flags == CURSOR_SHOWING){
+				ICONINFO cursoricon;
+				//GetIconInfo(
+			}
+			*/
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,0.8), &brush);
+			renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx_L,cy), 3, 3), brush);
+			renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx_R,cy), 3, 3), brush);
+			brush->Release();
 
 			// global fading mask
 			if(alpha<1){	
