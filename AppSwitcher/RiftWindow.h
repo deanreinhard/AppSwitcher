@@ -79,7 +79,7 @@ namespace AppSwitcher {
 		// requires handle to be set
 		void InitializeD2D(){
 			direct2DFactory = nullptr;
-			if(!FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory)))
+			if(FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &direct2DFactory)))
 				throw gcnew Exception("Failed to create Direct2D factory");
 			
 			RECT rect;
