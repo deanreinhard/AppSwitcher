@@ -297,6 +297,7 @@ namespace AppSwitcher {
 			} // squash error
 		 }
 
+		// ix=-1: change to desktop ix>=0:change to specified app id
 		void SwitchApp(int ix){
 			if(currentProcess){
 				rw->NotifyAppTerminate();
@@ -304,7 +305,8 @@ namespace AppSwitcher {
 				currentProcess = nullptr;
 			}
 
-			LaunchUnityRiftApplication(config[ix]->path);
+			if(ix>=0)
+				LaunchUnityRiftApplication(config[ix]->path);
 		}
 		
 		protected:

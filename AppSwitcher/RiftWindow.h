@@ -33,8 +33,8 @@ namespace AppSwitcher {
 	/// Stream video to rift by creating large window there.
 	public class RiftWindow {
 	public:
-		RiftWindow(String^ device, app_change_request^ req) : window_app(nullptr), changed(false), mode(ST_HOME), alpha(0),
-			hud_visible(true), hud_cursor(0), hud_cursor_running(-1), request_change(req) {
+		RiftWindow(String^ device, app_change_request^ req) : window_app(nullptr), changed(true), mode(ST_ENTERING), alpha(0),
+			hud_visible(true), hud_cursor(0), baseenv_is_id(false), request_change(req) {
 
 			hud_items = gcnew Generic::List<String^>();
 
@@ -91,18 +91,29 @@ namespace AppSwitcher {
 				&renderTarget)))
 				throw gcnew Exception("Failed to create Direct2D render target");
 
-			// create bitmap
-			bitmap_d2d = nullptr;
+			// create bitmap for BaseEnv-Id
+			bitmap_d2d_id = nullptr;
 			if(FAILED(renderTarget->CreateBitmap(
 				D2D1::SizeU(1280,800),
 				D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
-				&bitmap_d2d)))
+				&bitmap_d2d_id)))
+				throw gcnew NotSupportedException("Couldn't allocate B8G8R8A8 premultiplied-alpha bitmap");
+
+			// create bitmap for BaseEnv-Desktop
+			bitmap_d2d_desktop = nullptr;
+			if(FAILED(renderTarget->CreateBitmap(
+				D2D1::SizeU(800,800),
+				D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+				&bitmap_d2d_desktop)))
 				throw gcnew NotSupportedException("Couldn't allocate B8G8R8A8 premultiplied-alpha bitmap");
 		}
 
 		~RiftWindow() {
-			if(bitmap_d2d)
-				bitmap_d2d->Release();
+			if(bitmap_d2d_id)
+				bitmap_d2d_id->Release();
+
+			if(bitmap_d2d_desktop)
+				bitmap_d2d_desktop->Release();
 
 			if(renderTarget)
 				renderTarget->Release();
@@ -112,6 +123,7 @@ namespace AppSwitcher {
 		}
 
 	public:
+		// these are only for BaseEnv-Id, app control should be moved to something like AppPool in the future.
 		void NotifyAppChange(HWND app){
 			window_app = app;
 			changed = true; // "wait for content ready" flag
@@ -126,6 +138,8 @@ namespace AppSwitcher {
 			Generic::List<String^>^ items = hud_items;
 
 			items->Clear();
+			items->Add("<Desktop>");
+
 			for each(AppConfig^ cfg in config){
 				String^ name = cfg->path->Substring(cfg->path->LastIndexOf("\\")+1);
 				items->Add(name);
@@ -168,7 +182,7 @@ namespace AppSwitcher {
 
 		void RenderFrame(){
 			renderTarget->BeginDraw();
-			if(true){
+			if(baseenv_is_id){
 				RenderBaseEnv_Id();
 			}
 			else{
@@ -227,7 +241,7 @@ namespace AppSwitcher {
 					lock->GetStride(&stride);
 
 					if(buffer[0]<100){ // it's likely to be showing oculus content
-						bitmap_d2d->CopyFromMemory(nullptr, buffer, stride);
+						bitmap_d2d_id->CopyFromMemory(nullptr, buffer, stride);
 						if(changed){ // initiate fade-in if this is the first time
 							changed = false;
 							mode = ST_ENTERING;
@@ -249,7 +263,7 @@ namespace AppSwitcher {
 
 			// faded content
 			D2D1_RECT_F rc = D2D1::RectF(0, 0, 1280, 800);
-			renderTarget->DrawBitmap(bitmap_d2d, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
+			renderTarget->DrawBitmap(bitmap_d2d_id, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
 			if(alpha<1){	
 				renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1.0f-alpha), &brush);
 				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
@@ -258,15 +272,60 @@ namespace AppSwitcher {
 		}
 
 		void RenderBaseEnv_Desktop(){
+			// capture portion of screen
+			zoom_cx = 300;
+			zoom_cy = 300;
+			HBITMAP bitmap = CaptureScreen(zoom_cx, zoom_cy, 800, 800);
+
+			// convert to D2D bitmap
+			IWICImagingFactory* iFactory = nullptr;
+			if(FAILED(CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, reinterpret_cast<LPVOID*>(&iFactory))))
+				throw gcnew Exception("Failed to create WIC Imaginc factory");
+
+			IWICBitmap* bitmap_iwic = nullptr;
+			if(FAILED(iFactory->CreateBitmapFromHBITMAP(bitmap, NULL, WICBitmapAlphaChannelOption::WICBitmapIgnoreAlpha, &bitmap_iwic)))
+				throw gcnew Exception("Failed to create WIC bitmap");
+				
+			WICRect rc = {0, 0, 800, 800};
+			IWICBitmapLock* lock = nullptr;
+			bitmap_iwic->Lock(&rc, WICBitmapLockRead, &lock);
+			if(lock){
+				UINT bufferSize, stride;
+				BYTE* buffer = nullptr;
+				lock->GetDataPointer(&bufferSize, &buffer);
+				lock->GetStride(&stride);
+
+				bitmap_d2d_desktop->CopyFromMemory(nullptr, buffer, stride);
+				if(changed){ // initiate fade-in if this is the first time
+					changed = false;
+					mode = ST_ENTERING;
+				}
+				lock->Release();
+			}
+
+			bitmap_iwic->Release();
+			iFactory->Release();
+			DeleteObject(bitmap);
+
 			// background
 			ID2D1SolidColorBrush* brush;
 			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0), &brush);
 			renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
 			brush->Release();
 
-			// faded content
-			D2D1_RECT_F rc = D2D1::RectF(0, 0, 1280, 800);
-			renderTarget->DrawBitmap(bitmap_d2d, &rc, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc);
+			// for each eye
+			const float delta = 50;
+			const float half_size_dst = 400;
+			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, 800, 800);
+			D2D1_RECT_F rc_d2d_dest_L = D2D1::RectF(320+delta-half_size_dst, 400-half_size_dst, 320+delta+half_size_dst, 400+half_size_dst);
+			D2D1_RECT_F rc_d2d_dest_R = D2D1::RectF(640+320-delta-half_size_dst, 400-half_size_dst, 640-delta+320+half_size_dst, 400+half_size_dst);
+			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_L, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+			renderTarget->DrawBitmap(bitmap_d2d_desktop, &rc_d2d_dest_R, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &rc_d2d_src);
+
+			// cursor must be overlaid here because it's not in screen capture
+
+
+			// global fading mask
 			if(alpha<1){	
 				renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1.0f-alpha), &brush);
 				renderTarget->FillRectangle(D2D1::RectF(0,0,1280,800), brush);
@@ -313,10 +372,19 @@ namespace AppSwitcher {
 
 				bool curr_enter = GetAsyncKeyState(VK_RETURN);
 				if(curr_enter && !prev_enter){
-					if(hud_cursor_running != hud_cursor){
-						hud_cursor_running = hud_cursor;
-						app_change_request^ req = request_change;
-						req->Invoke(hud_cursor);
+					const int hud_active = baseenv_is_id?(1+ix_app_running):0;
+
+					if(hud_active != hud_cursor){
+						if(hud_cursor == 0){ // change to desktop
+							baseenv_is_id = false;
+							changed = true; // this is needed because Config doesn't call NotifyAppChange for BaseEnv-Desktop
+							static_cast<app_change_request^>(request_change)->Invoke(-1);
+						}
+						else{ // change to app
+							baseenv_is_id = true;
+							ix_app_running = hud_cursor-1;
+							static_cast<app_change_request^>(request_change)->Invoke(ix_app_running);
+						}
 					}
 				}
 				prev_enter = curr_enter;
@@ -356,6 +424,7 @@ namespace AppSwitcher {
 			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1,0.1,0.1), &brush_fg_base);
 			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97), &brush_fg_sel);
 
+			const int hud_active = baseenv_is_id?(1+ix_app_running):0;
 			for(int i=0; i<n; i++){
 				float x0 = -f_width/2;
 				float y0 = -f_height/2 + i*(margin+height);
@@ -374,7 +443,7 @@ namespace AppSwitcher {
 					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_sel);
 				}
 
-				if(i==hud_cursor_running){
+				if(i == hud_active){
 					renderTarget->FillRectangle(D2D1::RectF(x0+f_width+margin, y0, x0+f_width+margin+10, y0+height), brush_sel);
 				}
 			}
@@ -408,18 +477,23 @@ namespace AppSwitcher {
 	private:
 		HWND handle;
 	private: // D2D things
-		ID2D1Bitmap* bitmap_d2d;
 		ID2D1Factory* direct2DFactory;
 		ID2D1HwndRenderTarget* renderTarget;
-	private: // global state (currently there's no muxing)
-		HWND window_app;
+	private: // inter-BaseEnv state		
 		bool changed;
 		EffectMode mode;
 		float alpha; // 1:app 0:home
-	private: // HUD state
+		bool baseenv_is_id;
+	private: // BaseEnv-Id
+		HWND window_app;
+		ID2D1Bitmap* bitmap_d2d_id; // 1280x800
+		int ix_app_running;
+	private: // BaseEnv-Desktop
+		int zoom_cx, zoom_cy;
+		ID2D1Bitmap* bitmap_d2d_desktop; // 800x800
+	private: // HUD state: 0=desktop 1-n:apps, so cursor=ix_app_running+1 when baseenv_is_id
 		bool hud_visible;
 		int hud_cursor;
-		int hud_cursor_running;
 		bool prev_up, prev_down, prev_enter;
 		gcroot<Generic::List<String^>^> hud_items;
 		gcroot<app_change_request^> request_change;
