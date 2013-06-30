@@ -286,7 +286,7 @@ namespace AppSwitcher {
 
 		void RenderBaseEnv_Desktop(){
 			// capture portion of screen
-			const int sz = min(2000, (800 / *desktop_zoom));
+			const int sz = min(3000, (800 / *desktop_zoom));
 			POINT cursorpos;
 			GetCursorPos(&cursorpos);
 			zoom_cx = cursorpos.x;
@@ -301,27 +301,15 @@ namespace AppSwitcher {
 			IWICBitmap* bitmap_iwic = nullptr;
 			if(FAILED(iFactory->CreateBitmapFromHBITMAP(bitmap, NULL, WICBitmapAlphaChannelOption::WICBitmapIgnoreAlpha, &bitmap_iwic)))
 				throw gcnew Exception("Failed to create WIC bitmap");
+
+			IWICBitmapScaler* scaler;
+			iFactory->CreateBitmapScaler(&scaler);
+			scaler->Initialize(bitmap_iwic, 800, 800, WICBitmapInterpolationModeFant); // super good interpolation
 			
 			ID2D1Bitmap* bitmap_d2d;
-			renderTarget->CreateBitmapFromWicBitmap(bitmap_iwic, &bitmap_d2d);
-			/*
-			WICRect rc = {0, 0, 800, 800};
-			IWICBitmapLock* lock = nullptr;
-			bitmap_iwic->Lock(&rc, WICBitmapLockRead, &lock);
-			if(lock){
-				UINT bufferSize, stride;
-				BYTE* buffer = nullptr;
-				lock->GetDataPointer(&bufferSize, &buffer);
-				lock->GetStride(&stride);
+			renderTarget->CreateBitmapFromWicBitmap(scaler, &bitmap_d2d);
 
-				bitmap_d2d_desktop->CopyFromMemory(nullptr, buffer, stride);
-				if(changed){ // initiate fade-in if this is the first time
-					changed = false;
-					mode = ST_ENTERING;
-				}
-				lock->Release();
-			}
-			*/
+			scaler->Release();
 
 			bitmap_iwic->Release();
 			iFactory->Release();
@@ -339,7 +327,7 @@ namespace AppSwitcher {
 			const float cx_L = 320+delta;
 			const float cx_R = 640+320-delta;
 			const float cy = 800/2;
-			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, sz, sz);
+			D2D1_RECT_F rc_d2d_src = D2D1::RectF(0, 0, 800, 800);
 			D2D1_RECT_F rc_d2d_dest_L = D2D1::RectF(cx_L-half_size_dst, cy-half_size_dst, cx_L+half_size_dst, cy+half_size_dst);
 			D2D1_RECT_F rc_d2d_dest_R = D2D1::RectF(cx_R-half_size_dst, cy-half_size_dst, cx_R+half_size_dst, cy+half_size_dst);
 
