@@ -60,6 +60,10 @@ namespace AppSwitcher {
 	private:
 		// Relocate config window out of rift screen. Also does some sanity checks.
 		System::Void Config_Shown(System::Object^  sender, System::EventArgs^  e) {
+			MoveOutsideRift(reinterpret_cast<HWND>(Handle.ToPointer()), true);
+		}
+
+		void MoveOutsideRift(HWND window, bool check_sanity){
 			// find rift screen
 			Screen^ screen_rift = nullptr;
 			auto screen_nonrift = gcnew Generic::List<Screen^>();
@@ -71,21 +75,31 @@ namespace AppSwitcher {
 			}
 
 			// sanity check
-			if(!screen_rift){
-				MessageBox::Show("Rift screen not found.");
-				Close();
-				return;
-			}
-			if(screen_nonrift->Count==0){
-				MessageBox::Show("Normal screen not found. Please run again in extended monitor mode.");
-				Close();
-				return;
+			if(check_sanity){
+				if(!screen_rift){
+					MessageBox::Show("Rift screen not found.");
+					Close();
+					return;
+				}
+				if(screen_nonrift->Count==0){
+					MessageBox::Show("Normal screen not found. Please run again in extended monitor mode.");
+					Close();
+					return;
+				}
 			}
 
 			// move window to first non-rift screen if it's in rift screen. Otherwise leave it as is.
-			if(Screen::FromRectangle(this->DesktopBounds)->Equals(screen_rift)){
+			POINT pt;
+			pt.x = 0;
+			pt.y = 0;
+			ClientToScreen(window, &pt);
+			
+			if(Screen::FromPoint(Point(pt.x, pt.y))->Equals(screen_rift)){
 				auto loc = screen_nonrift[0]->Bounds.Location;
-				this->SetDesktopLocation(loc.X, loc.Y);
+				RECT rect;
+				GetWindowRect(window, &rect);
+				MoveWindow(window, loc.X, loc.Y, rect.right-rect.left, rect.bottom-rect.top, true);
+				//SetWindowPos(window, HWND_TOP, loc.X, loc.Y, 0, 0, SWP_NOSIZE);
 			}
 		}
 
@@ -499,7 +513,9 @@ namespace AppSwitcher {
 				throw gcnew Exception(String::Format("Couldn't find launched window for pid={0}.", pid));
 			}
 
-			// we launch it anyway if window isn't big (since we don't set window parameters, it's possible)
+			// change window
+			Thread::Sleep(500);
+			MoveOutsideRift(window, false);
 			currentProcess = proc;
 			rw->NotifyAppChange(window);
 		}
