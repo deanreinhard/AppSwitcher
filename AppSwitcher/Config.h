@@ -29,7 +29,7 @@ namespace AppSwitcher {
 	public:
 		Config() {
 			InitializeComponent();
-			
+
 			// get rift info
 			OVR::System::Init();
 
@@ -41,8 +41,8 @@ namespace AppSwitcher {
 			
 			String^ displayDeviceName = gcnew String(info.DisplayDeviceName);
 			String^ device = displayDeviceName->Substring(0, displayDeviceName->LastIndexOf("\\"));
+			riftDevice = device;
 			labelRiftInfo->Text = String::Format("({0},{1}) {2} {3}", info.DesktopX, info.DesktopY, displayDeviceName, device);
-			// example of displaydevicename "\\.\DISPLAY2\Monitor0"
 
 			// create rift window
 			desktop_zoom = new float;
@@ -55,6 +55,38 @@ namespace AppSwitcher {
 			// load model & apply to view
 			config = LoadConfig("config.json");
 			ApplyConfigToView(false);
+		}
+
+	private:
+		// Relocate config window out of rift screen. Also does some sanity checks.
+		System::Void Config_Shown(System::Object^  sender, System::EventArgs^  e) {
+			// find rift screen
+			Screen^ screen_rift = nullptr;
+			auto screen_nonrift = gcnew Generic::List<Screen^>();
+			for each(Screen^ scr in Screen::AllScreens){
+				if(scr->DeviceName == riftDevice)
+					screen_rift = scr;
+				else
+					screen_nonrift->Add(scr);
+			}
+
+			// sanity check
+			if(!screen_rift){
+				MessageBox::Show("Rift screen not found.");
+				Close();
+				return;
+			}
+			if(screen_nonrift->Count==0){
+				MessageBox::Show("Normal screen not found. Please run again in extended monitor mode.");
+				Close();
+				return;
+			}
+
+			// move window to first non-rift screen if it's in rift screen. Otherwise leave it as is.
+			if(Screen::FromRectangle(this->DesktopBounds)->Equals(screen_rift)){
+				auto loc = screen_nonrift[0]->Bounds.Location;
+				this->SetDesktopLocation(loc.X, loc.Y);
+			}
 		}
 
 	protected:
@@ -104,6 +136,7 @@ namespace AppSwitcher {
 		}
 
 	
+	private: String^ riftDevice;
 	private: float* desktop_ipd;
 	private: float* desktop_zoom;
 
@@ -342,6 +375,7 @@ namespace AppSwitcher {
 			this->SizeGripStyle = System::Windows::Forms::SizeGripStyle::Hide;
 			this->Text = L"AppSwitcher";
 			this->FormClosed += gcnew System::Windows::Forms::FormClosedEventHandler(this, &Config::Config_FormClosed);
+			this->Shown += gcnew System::EventHandler(this, &Config::Config_Shown);
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarIPD))->EndInit();
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^  >(this->trackBarZoom))->EndInit();
 			this->ResumeLayout(false);
@@ -639,6 +673,7 @@ private: System::Void trackBarZoom_ValueChanged(System::Object^  sender, System:
 			 *desktop_zoom = trackBarZoom->Value*1e-3f;
 			 labelZoom->Text = String::Format("x{0:F2}", *desktop_zoom);
 		 }
+
 };
 }
 
