@@ -31,16 +31,145 @@ namespace AppSwitcher {
 	delegate void app_change_request(int);
 	delegate bool app_running_request();
 
+	public class IActivatedHandler{
+	public:
+		virtual void OnItemActivated(){}
+	};
+
+	public ref class RiftMenu {
+	public:
+		RiftMenu() : hidden(false), active(0), cursor(0), handler(nullptr) {
+			items = gcnew Generic::List<String^>();
+		}
+
+		void SetHandler(IActivatedHandler* handler){
+			this->handler = handler;
+		}
+
+		/// draw content in rift-format. This is side-effect free, so you can call at any time.
+		void Render(ID2D1RenderTarget* renderTarget){
+			const int d = 70;
+
+			if(!hidden){
+				// left eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(320+d, 400));
+				RenderCentered(renderTarget);
+
+				// right eye
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(640+320-d, 400));
+				RenderCentered(renderTarget);
+
+				// reset
+				renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+			}
+		}
+
+
+		void Tick(){
+			if(!hidden){
+				bool curr_up = GetAsyncKeyState(VK_UP);
+				if(curr_up && !prev_up)
+					cursor = max(0, cursor-1);
+				prev_up = curr_up;
+
+				bool curr_down = GetAsyncKeyState(VK_DOWN);
+				if(curr_down && !prev_down)
+					cursor = min(items->Count-1, cursor+1);
+				prev_down = curr_down;
+
+				bool curr_enter = GetAsyncKeyState(VK_RETURN);
+				if(curr_enter && !prev_enter){
+					if(handler)
+						handler->OnItemActivated();
+					active = cursor;
+				}
+				prev_enter = curr_enter;
+			}
+		}
+
+	protected:
+		void RenderCentered(ID2D1RenderTarget* renderTarget){
+			// draw
+			const float f_width = 250;
+			const float margin = 3;
+			const float height = 30;
+
+			const float margin_text_h = 15;
+			const float margin_text_v = 7;
+
+			const int n = items->Count;
+			const float f_height = (n-1) * margin + n*height;
+
+			// items
+			IDWriteFactory* wfactory;
+			DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(wfactory), reinterpret_cast<IUnknown**>(&wfactory));
+
+			IDWriteTextFormat* tformat;
+			wfactory->CreateTextFormat(L"Meiryo UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+				DWRITE_FONT_STRETCH_CONDENSED, 16, L"", &tformat);
+
+
+			ID2D1SolidColorBrush* brush_base;
+			ID2D1SolidColorBrush* brush_sel;
+			ID2D1SolidColorBrush* brush_fg_base;
+			ID2D1SolidColorBrush* brush_fg_sel;
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97,0.67), &brush_base);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.96,0.64,0.08,0.67), &brush_sel);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1,0.1,0.1), &brush_fg_base);
+			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97), &brush_fg_sel);
+
+			const int hud_active = active;
+			for(int i=0; i<n; i++){
+				float x0 = -f_width/2;
+				float y0 = -f_height/2 + i*(margin+height);
+
+				pin_ptr<const wchar_t> wch = PtrToStringChars(items[i]);
+
+				D2D1_RECT_F rc_box = D2D1::RectF(x0, y0, x0+f_width, y0+height);
+				D2D1_RECT_F rc_text = D2D1::RectF(x0+margin_text_h, y0+margin_text_v, x0+f_width, y0+height-2*margin_text_v);
+
+				if(i!=cursor){
+					renderTarget->FillRectangle(rc_box, brush_base);
+					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_base);
+				}
+				else{
+					renderTarget->FillRectangle(rc_box, brush_sel);
+					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_sel);
+				}
+
+				if(i == hud_active){
+					renderTarget->FillRectangle(D2D1::RectF(x0+f_width+margin, y0, x0+f_width+margin+10, y0+height), brush_sel);
+				}
+			}
+			brush_base->Release();
+			brush_sel->Release();
+			brush_fg_base->Release();
+			brush_fg_sel->Release();
+			tformat->Release();
+			wfactory->Release();
+		}
+	public:
+		Generic::List<String^>^ items;
+		bool hidden;
+		int active;
+		int cursor;
+	private:
+		bool prev_up, prev_down, prev_enter;
+	private:
+		IActivatedHandler* handler;
+	};
+
 	/// Stream video to rift by creating large window there.
-	public class RiftWindow {
+	public class RiftWindow : public IActivatedHandler {
 	public:
 		RiftWindow(String^ device, app_change_request^ req, app_running_request^ req_run, float* r_desktop_zoom, float* r_desktop_ipd) :
 			window_app(nullptr), changed(true), mode(ST_ENTERING), alpha(0),
-			hud_visible(true), hud_cursor(0), baseenv_is_id(false),
+			baseenv_is_id(false),
 			desktop_zoom(r_desktop_zoom), desktop_ipd(r_desktop_ipd),
 			request_change(req), request_running(req_run) {
 
-			hud_items = gcnew Generic::List<String^>();
+			hud = gcnew RiftMenu();
+			hud->SetHandler(this);
 
 			InitializeWindow(device);
 
@@ -139,7 +268,7 @@ namespace AppSwitcher {
 		}
 
 		void NotifyModelChange(Generic::List<AppConfig^>^ config){
-			Generic::List<String^>^ items = hud_items;
+			Generic::List<String^>^ items = hud->items;
 
 			items->Clear();
 			items->Add("<Desktop>");
@@ -186,17 +315,16 @@ namespace AppSwitcher {
 
 		void RenderFrame(){
 			renderTarget->BeginDraw();
-			if(baseenv_is_id){
+			if(baseenv_is_id)
 				RenderBaseEnv_Id();
-			}
-			else{
+			else
 				RenderBaseEnv_Desktop();
-			}
-			RenderHUD();
+
+			hud->Render(renderTarget);
 			renderTarget->EndDraw();
 
 			AnimateBaseEnv();
-			AnimateHUD();
+			hud->Tick();
 			bool is_app_invalid = false;
 			if(baseenv_is_id){ // only check when app is supposed to be running
 				is_app_invalid = !static_cast<app_running_request^>(request_running)->Invoke();
@@ -205,23 +333,6 @@ namespace AppSwitcher {
 				baseenv_is_id = false;
 				changed = true; // this is needed because Config doesn't call NotifyAppChange for BaseEnv-Desktop
 				static_cast<app_change_request^>(request_change)->Invoke(-1);
-			}
-		}
-
-		void RenderHUD(){
-			const int d = 70;
-
-			if(hud_visible){
-				// left eye
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(320+d, 400));
-				RenderHUDCentered();
-
-				// right eye
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Translation(640+320-d, 400));
-				RenderHUDCentered();
-
-				// reset
-				renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
 			}
 		}
 
@@ -390,103 +501,22 @@ namespace AppSwitcher {
 			}
 		}
 
-		void AnimateHUD(){
-			if(hud_visible){
-				bool curr_up = GetAsyncKeyState(VK_UP);
-				if(curr_up && !prev_up)
-					hud_cursor = max(0, hud_cursor-1);
-				prev_up = curr_up;
-
-				bool curr_down = GetAsyncKeyState(VK_DOWN);
-				if(curr_down && !prev_down)
-					hud_cursor = min(static_cast<Generic::List<String^>^>(hud_items)->Count-1, hud_cursor+1);
-				prev_down = curr_down;
-
-				bool curr_enter = GetAsyncKeyState(VK_RETURN);
-				if(curr_enter && !prev_enter){
-					const int hud_active = baseenv_is_id?(1+ix_app_running):0;
-
-					if(hud_active != hud_cursor){
-						if(hud_cursor == 0){ // change to desktop
-							baseenv_is_id = false;
-							changed = true; // this is needed because Config doesn't call NotifyAppChange for BaseEnv-Desktop
-							static_cast<app_change_request^>(request_change)->Invoke(-1);
-						}
-						else{ // change to app
-							baseenv_is_id = true;
-							ix_app_running = hud_cursor-1;
-							static_cast<app_change_request^>(request_change)->Invoke(ix_app_running);
-						}
-					}
-					else
-						mode = ST_APP;
+		public:
+		void OnItemActivated(){
+			if(hud->active != hud->cursor){
+				if(hud->cursor == 0){ // change to desktop
+					baseenv_is_id = false;
+					changed = true; // this is needed because Config doesn't call NotifyAppChange for BaseEnv-Desktop
+					static_cast<app_change_request^>(request_change)->Invoke(-1);
 				}
-				prev_enter = curr_enter;
-			}
-		}
-
-		// 
-		void RenderHUDCentered(){
-			Generic::List<String^>^ items = hud_items;
-
-			// draw
-			const float f_width = 250;
-			const float margin = 3;
-			const float height = 30;
-
-			const float margin_text_h = 15;
-			const float margin_text_v = 7;
-
-			const int n = items->Count;
-			const float f_height = (n-1) * margin + n*height;
-
-			// items
-			IDWriteFactory* wfactory;
-			DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(wfactory), reinterpret_cast<IUnknown**>(&wfactory));
-
-			IDWriteTextFormat* tformat;
-			wfactory->CreateTextFormat(L"Meiryo UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-				DWRITE_FONT_STRETCH_CONDENSED, 16, L"", &tformat);
-
-
-			ID2D1SolidColorBrush* brush_base;
-			ID2D1SolidColorBrush* brush_sel;
-			ID2D1SolidColorBrush* brush_fg_base;
-			ID2D1SolidColorBrush* brush_fg_sel;
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97,0.67), &brush_base);
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.96,0.64,0.08,0.67), &brush_sel);
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1,0.1,0.1), &brush_fg_base);
-			renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.97,0.97,0.97), &brush_fg_sel);
-
-			const int hud_active = baseenv_is_id?(1+ix_app_running):0;
-			for(int i=0; i<n; i++){
-				float x0 = -f_width/2;
-				float y0 = -f_height/2 + i*(margin+height);
-
-				pin_ptr<const wchar_t> wch = PtrToStringChars(items[i]);
-
-				D2D1_RECT_F rc_box = D2D1::RectF(x0, y0, x0+f_width, y0+height);
-				D2D1_RECT_F rc_text = D2D1::RectF(x0+margin_text_h, y0+margin_text_v, x0+f_width, y0+height-2*margin_text_v);
-
-				if(i!=hud_cursor){
-					renderTarget->FillRectangle(rc_box, brush_base);
-					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_base);
-				}
-				else{
-					renderTarget->FillRectangle(rc_box, brush_sel);
-					renderTarget->DrawText(wch, items[i]->Length, tformat, rc_text, brush_fg_sel);
-				}
-
-				if(i == hud_active){
-					renderTarget->FillRectangle(D2D1::RectF(x0+f_width+margin, y0, x0+f_width+margin+10, y0+height), brush_sel);
+				else{ // change to app
+					baseenv_is_id = true;
+					ix_app_running = hud->cursor-1;
+					static_cast<app_change_request^>(request_change)->Invoke(ix_app_running);
 				}
 			}
-			brush_base->Release();
-			brush_sel->Release();
-			brush_fg_base->Release();
-			brush_fg_sel->Release();
-			tformat->Release();
-			wfactory->Release();
+			else
+				mode = ST_APP;
 		}
 
 		LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam){
@@ -502,7 +532,7 @@ namespace AppSwitcher {
 				UpdateWindow(handle);
 				return 0;
 			case WM_HOTKEY:
-				hud_visible = !hud_visible;
+				hud->hidden = !hud->hidden;
 				return 0;
 			}
 			return DefWindowProc(handle, message, wParam, lParam);
@@ -528,10 +558,8 @@ namespace AppSwitcher {
 		int zoom_cx, zoom_cy;
 		ID2D1Bitmap* bitmap_d2d_desktop; // 800x800
 	private: // HUD state: 0=desktop 1-n:apps, so cursor=ix_app_running+1 when baseenv_is_id
-		bool hud_visible;
-		int hud_cursor;
-		bool prev_up, prev_down, prev_enter;
-		gcroot<Generic::List<String^>^> hud_items;
+		gcroot<RiftMenu^> hud;
+	private:
 		gcroot<app_change_request^> request_change;
 		gcroot<app_running_request^> request_running;
 	};
