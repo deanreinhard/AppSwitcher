@@ -53,25 +53,25 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\xyx\Desktop\OculusSDK-0.2.3\LibOVR\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;dwrite.lib;libovrd.lib</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;dwrite.lib;shell32.lib;libovrd.lib</AdditionalDependencies>
       <SubSystem>NotSet</SubSystem>
-      <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK-0.2.3\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\xyx\Desktop\OculusSDK-0.2.3\LibOVR\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;dwrite.lib;libovr.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalDependencies>user32.lib;winmm.lib;gdi32.lib;d2d1.lib;windowscodecs.lib;ole32.lib;dwrite.lib;shell32.lib;libovr.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\xyx\Desktop\OculusSDK-0.2.3\LibOVR\Lib\Win32</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
